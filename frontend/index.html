@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Learning Lab</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    #chat { border: 1px solid #ccc; padding: 1rem; height: 300px; overflow-y: auto; }
+    .user { color: blue; }
+    .bot { color: green; }
+  </style>
+</head>
+<body>
+  <h1>AI Learning Lab</h1>
+  <div id="chat"></div>
+  <input id="prompt" type="text" placeholder="Say something..." size="40" />
+  <button onclick="sendMessage()">Send</button>
+  <button onclick="startListening()">🎤</button>
+
+  <script>
+    const chatDiv = document.getElementById('chat');
+    const promptInput = document.getElementById('prompt');
+    const synth = window.speechSynthesis;
+
+    async function sendMessage(text) {
+      const message = text || promptInput.value;
+      if (!message) return;
+      appendMessage('user', message);
+      promptInput.value = '';
+
+      const response = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
+      const data = await response.json();
+      appendMessage('bot', data.response);
+      speak(data.response);
+    }
+
+    function appendMessage(sender, text) {
+      const p = document.createElement('p');
+      p.className = sender;
+      p.textContent = text;
+      chatDiv.appendChild(p);
+      chatDiv.scrollTop = chatDiv.scrollHeight;
+    }
+
+    function speak(text) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      synth.speak(utterance);
+    }
+
+    function startListening() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert('Speech recognition not supported');
+        return;
+      }
+      const recognition = new SpeechRecognition();
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        sendMessage(transcript);
+      };
+      recognition.start();
+    }
+  </script>
+</body>
+</html>
