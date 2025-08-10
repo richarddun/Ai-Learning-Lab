@@ -12,6 +12,10 @@
 </head>
 <body>
   <h1>AI Learning Lab</h1>
+  <div>
+    <input id="userId" type="text" placeholder="User ID" size="10" />
+    <button onclick="loadHistory()">Load History</button>
+  </div>
   <div id="chat"></div>
   <input id="prompt" type="text" placeholder="Say something..." size="40" />
   <button onclick="sendMessage()">Send</button>
@@ -20,6 +24,7 @@
   <script>
     const chatDiv = document.getElementById('chat');
     const promptInput = document.getElementById('prompt');
+    const userIdInput = document.getElementById('userId');
     const synth = window.speechSynthesis;
 
     async function sendMessage(text) {
@@ -31,11 +36,20 @@
       const response = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message })
+        body: JSON.stringify({ user_id: userIdInput.value, message })
       });
       const data = await response.json();
       appendMessage('bot', data.response);
       speak(data.response);
+    }
+
+    async function loadHistory() {
+      chatDiv.innerHTML = '';
+      const userId = userIdInput.value;
+      if (!userId) return;
+      const res = await fetch(`/users/${userId}/history`);
+      const data = await res.json();
+      data.history.forEach(msg => appendMessage(msg.role, msg.content));
     }
 
     function appendMessage(sender, text) {
