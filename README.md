@@ -1,6 +1,6 @@
 # AI Learning Lab
 
-A simple web application that teaches kids how to steer and converse with language models.  
+A simple web application that teaches kids how to steer and converse with language models.
 The project is structured with a Python backend and a lightweight frontend that includes voice features.
 
 ## Development Setup
@@ -26,6 +26,17 @@ uvicorn backend.app.main:app --reload
 ```
 
 Visit `http://localhost:8000` and open `frontend/index.html` in a browser to interact with the chat interface.
+
+### Optional: HTTPS for Voice Streaming
+
+Some browsers require HTTPS for microphone access. A local Certificate Authority is bundled in `certs/ca.cert.pem`.
+Import this certificate into your system or browser trust store, then start the server with SSL:
+
+```bash
+python backend/run_ssl.py
+```
+
+This will serve the app at `https://localhost:8000` using the trusted certificate.
 
 ## Next steps
 
