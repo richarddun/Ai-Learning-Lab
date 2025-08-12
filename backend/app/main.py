@@ -1,4 +1,3 @@
-
 from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
@@ -18,11 +17,11 @@ def get_db():
     finally:
         db.close()
 
+
 app = FastAPI(title="AI Learning Lab")
 
 
 class ChatRequest(BaseModel):
-
     """Request body for chat interactions."""
 
     user_id: int
@@ -62,7 +61,6 @@ class PreferencesUpdate(BaseModel):
 
 
 @app.post("/chat")
-
 async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     """Proxy a chat request to the OpenRouter API while persisting history."""
     user = db.query(models.User).filter(models.User.id == req.user_id).first()
@@ -73,12 +71,11 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     db.add(user_msg)
     db.commit()
 
-    response_text = await chat_with_openrouter(req.message)
+    response_text = await chat_with_openrouter(req.message, req.system_prompt)
 
     bot_msg = models.Message(user_id=user.id, role="bot", content=response_text)
     db.add(bot_msg)
     db.commit()
-
 
     return {"response": response_text}
 
@@ -97,7 +94,9 @@ def create_user(req: UserCreate, db: Session = Depends(get_db)):
 
 
 @app.put("/users/{user_id}/preferences")
-def update_preferences(user_id: int, req: PreferencesUpdate, db: Session = Depends(get_db)):
+def update_preferences(
+    user_id: int, req: PreferencesUpdate, db: Session = Depends(get_db)
+):
     """Update stored preferences for a user."""
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if not user:
