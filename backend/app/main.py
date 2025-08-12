@@ -1,11 +1,8 @@
-"""FastAPI application providing chat and user management endpoints."""
 
-from typing import List
-
+from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
 from backend.services.openrouter import chat_with_openrouter
 from backend.services import models
 from backend.services.database import SessionLocal, engine
@@ -25,8 +22,34 @@ app = FastAPI(title="AI Learning Lab")
 
 
 class ChatRequest(BaseModel):
+
+    """Request body for chat interactions."""
+
     user_id: int
     message: str
+    system_prompt: Optional[str] = None
+
+
+class Profile(BaseModel):
+    """Represents a selectable user profile."""
+
+    id: int
+    name: str
+    avatar: Optional[str] = None
+
+
+@app.get("/profiles", response_model=List[Profile])
+async def get_profiles() -> List[Profile]:
+    """Return available user profiles.
+
+    This is a placeholder implementation. In a real application the
+    profiles would be loaded from a database.
+    """
+
+    return [
+        Profile(id=1, name="Alice", avatar="/avatars/alice.png"),
+        Profile(id=2, name="Bob", avatar="/avatars/bob.png"),
+    ]
 
 
 class UserCreate(BaseModel):
@@ -39,6 +62,7 @@ class PreferencesUpdate(BaseModel):
 
 
 @app.post("/chat")
+
 async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     """Proxy a chat request to the OpenRouter API while persisting history."""
     user = db.query(models.User).filter(models.User.id == req.user_id).first()
@@ -54,6 +78,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     bot_msg = models.Message(user_id=user.id, role="bot", content=response_text)
     db.add(bot_msg)
     db.commit()
+
 
     return {"response": response_text}
 
