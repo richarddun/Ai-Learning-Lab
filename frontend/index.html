@@ -19,6 +19,7 @@
   </style>
 </head>
 <body>
+
   <div id="landing">
     <h1>Select Your Profile</h1>
     <div id="profiles"></div>
@@ -53,6 +54,7 @@
     </div>
   </div>
 
+
   <script>
     const landing = document.getElementById('landing');
     const chatInterface = document.getElementById('chat-interface');
@@ -62,6 +64,7 @@
     const personaSelect = document.getElementById('persona-select');
     const profileName = document.getElementById('profile-name');
     const profileAvatar = document.getElementById('profile-avatar');
+
     const synth = window.speechSynthesis;
 
     const personas = {
@@ -104,11 +107,22 @@
       const response = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+
         body: JSON.stringify({ message, system_prompt: systemPrompt })
+
       });
       const data = await response.json();
       appendMessage('bot', data.response);
       speak(data.response);
+    }
+
+    async function loadHistory() {
+      chatDiv.innerHTML = '';
+      const userId = userIdInput.value;
+      if (!userId) return;
+      const res = await fetch(`/users/${userId}/history`);
+      const data = await res.json();
+      data.history.forEach(msg => appendMessage(msg.role, msg.content));
     }
 
     function appendMessage(sender, text) {
