@@ -75,6 +75,7 @@
     };
 
     let systemPrompt = '';
+    let userId = null;
 
     async function loadProfiles() {
       const res = await fetch('/profiles');
@@ -92,6 +93,7 @@
       chatInterface.style.display = 'block';
       profileName.textContent = profile.name;
       if (profile.avatar) profileAvatar.src = profile.avatar;
+      userId = profile.id;
     }
 
     personaSelect.addEventListener('change', () => {
@@ -108,7 +110,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
 
-        body: JSON.stringify({ message, system_prompt: systemPrompt })
+        body: JSON.stringify({ user_id: userId, message, system_prompt: systemPrompt })
 
       });
       const data = await response.json();
