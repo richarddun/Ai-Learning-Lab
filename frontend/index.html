@@ -26,6 +26,7 @@
   </div>
 
   <div id="chat-interface" style="display:none;">
+    <input type="hidden" id="user-id" />
     <div id="topbar">
       <img id="profile-avatar" src="" alt="avatar" />
       <span id="profile-name"></span>
@@ -64,6 +65,7 @@
     const personaSelect = document.getElementById('persona-select');
     const profileName = document.getElementById('profile-name');
     const profileAvatar = document.getElementById('profile-avatar');
+    const userIdField = document.getElementById('user-id');
 
     const synth = window.speechSynthesis;
 
@@ -93,7 +95,9 @@
       chatInterface.style.display = 'block';
       profileName.textContent = profile.name;
       if (profile.avatar) profileAvatar.src = profile.avatar;
-      userId = profile.id;
+      userIdField.value = profile.id;
+      loadHistory();
+
     }
 
     personaSelect.addEventListener('change', () => {
@@ -120,7 +124,7 @@
 
     async function loadHistory() {
       chatDiv.innerHTML = '';
-      const userId = userIdInput.value;
+      const userId = userIdField.value;
       if (!userId) return;
       const res = await fetch(`/users/${userId}/history`);
       const data = await res.json();
