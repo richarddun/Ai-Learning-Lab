@@ -13,10 +13,17 @@ pip install -r requirements.txt
 
 2. **Configure environment**
 
-Set your OpenRouter API key so the backend can access language models:
+Set your OpenRouter API key so the backend can access language models. You can
+export it directly:
 
 ```bash
 export OPENROUTER_API_KEY="your_key_here"
+```
+
+Or create a `.env` file in the project root with the following content:
+
+```bash
+OPENROUTER_API_KEY=your_key_here
 ```
 
 3. **Run the web server**
