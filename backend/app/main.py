@@ -1,8 +1,12 @@
 from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from backend.services.openrouter import chat_with_openrouter
+from backend.services.openrouter import (
+    chat_with_openrouter,
+    stream_chat_with_openrouter,
+)
 from backend.services import models
 from backend.services.database import SessionLocal, engine
 
@@ -78,6 +82,31 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     db.commit()
 
     return {"response": response_text}
+
+
+@app.post("/chat/stream")
+async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
+    """Stream a chat response from the OpenRouter API."""
+    user = db.query(models.User).filter(models.User.id == req.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user_msg = models.Message(user_id=user.id, role="user", content=req.message)
+    db.add(user_msg)
+    db.commit()
+
+    response_text = ""
+
+    async def event_gen():
+        nonlocal response_text
+        async for token in stream_chat_with_openrouter(req.message, req.system_prompt):
+            response_text += token
+            yield token
+        bot_msg = models.Message(user_id=user.id, role="bot", content=response_text)
+        db.add(bot_msg)
+        db.commit()
+
+    return StreamingResponse(event_gen(), media_type="text/plain")
 
 
 @app.post("/users")
