@@ -56,6 +56,7 @@
   </div>
 
 
+  <script src="config.js"></script>
   <script>
     const landing = document.getElementById('landing');
     const chatInterface = document.getElementById('chat-interface');
@@ -110,16 +111,29 @@
       appendMessage('user', message);
       promptInput.value = '';
 
-      const response = await fetch('/chat', {
+      const response = await fetch('/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-
-        body: JSON.stringify({ user_id: userId, message, system_prompt: systemPrompt })
-
+        body: JSON.stringify({
+          user_id: userIdField.value,
+          message,
+          system_prompt: systemPrompt
+        })
       });
-      const data = await response.json();
-      appendMessage('bot', data.response);
-      speak(data.response);
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const botP = appendMessage('bot', '');
+      let botText = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        botText += chunk;
+        botP.textContent += chunk;
+        chatDiv.scrollTop = chatDiv.scrollHeight;
+      }
+      speak(botText);
     }
 
     async function loadHistory() {
@@ -137,6 +151,7 @@
       p.textContent = text;
       chatDiv.appendChild(p);
       chatDiv.scrollTop = chatDiv.scrollHeight;
+      return p;
     }
 
     function speak(text) {
@@ -144,18 +159,45 @@
       synth.speak(utterance);
     }
 
-    function startListening() {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        alert('Speech recognition not supported');
+    async function startListening() {
+      if (!window.OPENAI_API_KEY) {
+        alert('OpenAI API key not configured');
         return;
       }
-      const recognition = new SpeechRecognition();
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        sendMessage(transcript);
-      };
-      recognition.start();
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const recorder = new MediaRecorder(stream);
+        const chunks = [];
+        recorder.ondataavailable = e => chunks.push(e.data);
+        recorder.onstop = async () => {
+          const blob = new Blob(chunks, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append('file', blob, 'speech.webm');
+          formData.append('model', 'whisper-1');
+          try {
+            const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${window.OPENAI_API_KEY}` },
+              body: formData
+            });
+            const data = await res.json();
+            if (data.text) {
+              sendMessage(data.text);
+            } else {
+              console.error('Transcription error', data);
+              alert('Transcription failed');
+            }
+          } catch (err) {
+            console.error('Transcription request failed', err);
+            alert('Transcription request failed');
+          }
+        };
+        recorder.start();
+        setTimeout(() => recorder.stop(), 5000);
+      } catch (err) {
+        console.error('Could not access microphone', err);
+        alert('Could not access microphone');
+      }
     }
 
     document.getElementById('send-btn').onclick = () => sendMessage();
