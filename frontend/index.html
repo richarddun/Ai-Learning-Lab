@@ -140,9 +140,24 @@
       chatDiv.innerHTML = '';
       const userId = userIdField.value;
       if (!userId) return;
-      const res = await fetch(`/users/${userId}/history`);
-      const data = await res.json();
-      data.history.forEach(msg => appendMessage(msg.role, msg.content));
+      try {
+        const res = await fetch(`/users/${userId}/history`);
+        if (!res.ok) {
+          if (res.status === 404) {
+            console.warn(`No history found for user ${userId}`);
+            appendMessage('bot', 'No history yet. Start the conversation!');
+          } else {
+            console.error(`Failed to load history (status ${res.status})`);
+          }
+          return;
+        }
+        const data = await res.json();
+        if (Array.isArray(data.history)) {
+          data.history.forEach(msg => appendMessage(msg.role, msg.content));
+        }
+      } catch (err) {
+        console.error('Error loading history', err);
+      }
     }
 
     function appendMessage(sender, text) {
