@@ -92,13 +92,25 @@
       });
     }
 
-    function selectProfile(profile) {
-      landing.style.display = 'none';
-      chatInterface.style.display = 'block';
-      profileName.textContent = profile.name;
-      if (profile.avatar) profileAvatar.src = profile.avatar;
-      userIdField.value = profile.id;
-      loadHistory();
+    async function selectProfile(profile) {
+      try {
+        const res = await fetch('/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: profile.name })
+        });
+        if (!res.ok) throw new Error('User creation failed');
+        const data = await res.json();
+        userIdField.value = data.id;
+        landing.style.display = 'none';
+        chatInterface.style.display = 'block';
+        profileName.textContent = profile.name;
+        if (profile.avatar) profileAvatar.src = profile.avatar;
+        loadHistory();
+      } catch (err) {
+        console.error('Failed to create user', err);
+        alert('Could not create user profile. Please try again.');
+      }
 
     }
 
