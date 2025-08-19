@@ -79,9 +79,10 @@
 
     let systemPrompt = '';
     let userId = null;
+    const API_BASE = '';
 
     async function loadProfiles() {
-      const res = await fetch('/profiles');
+      const res = await fetch(`${API_BASE}/profiles`);
       const profiles = await res.json();
       profiles.forEach((p) => {
         const btn = document.createElement('button');
@@ -91,13 +92,25 @@
       });
     }
 
-    function selectProfile(profile) {
-      landing.style.display = 'none';
-      chatInterface.style.display = 'block';
-      profileName.textContent = profile.name;
-      if (profile.avatar) profileAvatar.src = profile.avatar;
-      userIdField.value = profile.id;
-      loadHistory();
+    async function selectProfile(profile) {
+      try {
+        const res = await fetch('/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: profile.name })
+        });
+        if (!res.ok) throw new Error('User creation failed');
+        const data = await res.json();
+        userIdField.value = data.id;
+        landing.style.display = 'none';
+        chatInterface.style.display = 'block';
+        profileName.textContent = profile.name;
+        if (profile.avatar) profileAvatar.src = profile.avatar;
+        loadHistory();
+      } catch (err) {
+        console.error('Failed to create user', err);
+        alert('Could not create user profile. Please try again.');
+      }
 
     }
 
@@ -111,7 +124,7 @@
       appendMessage('user', message);
       promptInput.value = '';
 
-      const response = await fetch('/chat/stream', {
+      const response = await fetch(`${API_BASE}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -136,29 +149,31 @@
       speak(botText);
     }
 
-    async function loadHistory() {
-      chatDiv.innerHTML = '';
-      const userId = userIdField.value;
-      if (!userId) return;
-      try {
-        const res = await fetch(`/users/${userId}/history`);
-        if (!res.ok) {
-          if (res.status === 404) {
-            console.warn(`No history found for user ${userId}`);
-            appendMessage('bot', 'No history yet. Start the conversation!');
-          } else {
-            console.error(`Failed to load history (status ${res.status})`);
-          }
-          return;
-        }
-        const data = await res.json();
-        if (Array.isArray(data.history)) {
-          data.history.forEach(msg => appendMessage(msg.role, msg.content));
-        }
-      } catch (err) {
-        console.error('Error loading history', err);
+async function loadHistory() {
+  chatDiv.innerHTML = '';
+  const userId = userIdField.value;
+  if (!userId) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/users/${userId}/history`);
+    if (!res.ok) {
+      if (res.status === 404) {
+        console.warn(`No history found for user ${userId}`);
+        appendMessage('bot', 'No history yet. Start the conversation!');
+      } else {
+        console.error(`Failed to load history (status ${res.status})`);
       }
+      return;
     }
+    const data = await res.json();
+    if (Array.isArray(data.history)) {
+      data.history.forEach(msg => appendMessage(msg.role, msg.content));
+    }
+  } catch (err) {
+    console.error('Error loading history', err);
+  }
+}
+
 
     function appendMessage(sender, text) {
       const p = document.createElement('p');

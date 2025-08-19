@@ -32,7 +32,7 @@ OPENROUTER_API_KEY=your_key_here
 uvicorn backend.app.main:app --reload
 ```
 
-Visit `http://localhost:8000` and open `frontend/index.html` in a browser to interact with the chat interface.
+Visit `http://localhost:8000/` to access the frontend served by the backend. The page can call the API endpoints directly without any cross-origin configuration.
 
 ### Optional: HTTPS for Voice Streaming
 
