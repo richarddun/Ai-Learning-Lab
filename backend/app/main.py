@@ -1,6 +1,8 @@
 from typing import List, Optional
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from backend.services.openrouter import (
@@ -153,3 +155,8 @@ def get_history(user_id: int, db: Session = Depends(get_db)):
         for m in messages
     ]
     return {"history": history}
+
+
+# Serve the frontend directory as static files at the root.
+frontend_dir = Path(__file__).resolve().parent.parent.parent / "frontend"
+app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")

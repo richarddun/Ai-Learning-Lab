@@ -79,9 +79,10 @@
 
     let systemPrompt = '';
     let userId = null;
+    const API_BASE = '';
 
     async function loadProfiles() {
-      const res = await fetch('/profiles');
+      const res = await fetch(`${API_BASE}/profiles`);
       const profiles = await res.json();
       profiles.forEach((p) => {
         const btn = document.createElement('button');
@@ -111,7 +112,7 @@
       appendMessage('user', message);
       promptInput.value = '';
 
-      const response = await fetch('/chat/stream', {
+      const response = await fetch(`${API_BASE}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -140,7 +141,7 @@
       chatDiv.innerHTML = '';
       const userId = userIdField.value;
       if (!userId) return;
-      const res = await fetch(`/users/${userId}/history`);
+      const res = await fetch(`${API_BASE}/users/${userId}/history`);
       const data = await res.json();
       data.history.forEach(msg => appendMessage(msg.role, msg.content));
     }
