@@ -1,0 +1,88 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: linear-gradient(135deg, #1b1b1b, #4d4d4d);
+  color: #e0e0e0;
+}
+
+#landing,
+#chat-interface {
+  padding: 1rem;
+}
+
+#profiles button {
+  display: block;
+  margin: 0.5rem 0;
+  background: linear-gradient(135deg, #d9d9d9, #a6a6a6);
+  border: 1px solid #888;
+  color: #1b1b1b;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+#profiles button:hover {
+  background: linear-gradient(135deg, #f2f2f2, #bfbfbf);
+}
+
+#topbar {
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, #bfbfbf, #7f7f7f);
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #666;
+  color: #1b1b1b;
+}
+
+#topbar img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-right: 1rem;
+}
+
+#topbar .title {
+  margin-left: auto;
+  font-weight: bold;
+}
+
+#container {
+  display: flex;
+  height: calc(100vh - 70px);
+}
+
+#sidebar {
+  width: 200px;
+  border-right: 1px solid #666;
+  padding: 1rem;
+  background: #2a2a2a;
+}
+
+#chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+#chat {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+#input-area {
+  border-top: 1px solid #666;
+  padding: 0.5rem;
+  background: #2a2a2a;
+}
+
+#chat-interface {
+  display: none;
+}
+
+.user {
+  color: #76d1ff;
+}
+
+.bot {
+  color: #a3ffb0;
+}
