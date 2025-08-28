@@ -191,14 +191,28 @@
           return;
         }
         users.forEach((u) => {
+          let prefs = {};
+          try { prefs = u.preferences ? JSON.parse(u.preferences) : {}; } catch (e) {}
           const row = document.createElement('div');
-          row.style.display = 'flex';
-          row.style.alignItems = 'center';
-          row.style.marginBottom = '0.3rem';
-          const btn = document.createElement('button');
-          btn.textContent = u.name;
-          btn.style.marginRight = '0.5rem';
-          btn.onclick = () => selectConversation(u);
+          row.className = 'convo-row';
+          const thumb = document.createElement('img');
+          thumb.className = 'convo-thumb';
+          if (prefs.avatar) thumb.src = prefs.avatar; else thumb.alt = 'avatar';
+          const info = document.createElement('div');
+          info.className = 'convo-info';
+          const title = document.createElement('div');
+          title.className = 'convo-title';
+          title.textContent = u.name;
+          const meta = document.createElement('div');
+          meta.className = 'convo-meta';
+          const voice = prefs.voice_name || prefs.voice_id || '';
+          const sp = prefs.system_prompt ? prefs.system_prompt.replace(/\s+/g, ' ').slice(0, 140) : '';
+          meta.textContent = [voice ? `Voice: ${voice}` : null, sp ? `Prompt: ${sp}` : null].filter(Boolean).join('  •  ');
+          info.appendChild(title);
+          info.appendChild(meta);
+          const openBtn = document.createElement('button');
+          openBtn.textContent = 'Open';
+          openBtn.onclick = () => selectConversation(u);
           const del = document.createElement('button');
           del.textContent = 'Delete';
           del.onclick = async (e) => {
@@ -210,7 +224,6 @@
           };
           const ren = document.createElement('button');
           ren.textContent = 'Rename';
-          ren.style.marginLeft = '0.25rem';
           ren.onclick = async (e) => {
             e.stopPropagation();
             let newName = prompt('New name (leave blank for AI/auto):', u.name);
@@ -239,9 +252,11 @@
               alert('Rename failed');
             }
           };
-          row.appendChild(btn);
-          row.appendChild(del);
+          row.appendChild(thumb);
+          row.appendChild(info);
+          row.appendChild(openBtn);
           row.appendChild(ren);
+          row.appendChild(del);
           conversationsDiv.appendChild(row);
         });
       } catch (e) {
@@ -271,6 +286,19 @@
             try { document.getElementById('chat-avatar-bg').style.backgroundImage = `url('${prefs.avatar}')`; } catch (e) {}
           } else {
             try { document.getElementById('chat-avatar-bg').style.backgroundImage = ''; } catch (e) {}
+          }
+          // Apply stored system prompt / voice / character
+          if (prefs && prefs.system_prompt) {
+            systemPrompt = prefs.system_prompt;
+          }
+          if (prefs && prefs.voice_id) {
+            window.ELEVENLABS_VOICE_ID = prefs.voice_id;
+            if (voiceSelect) voiceSelect.value = prefs.voice_id;
+          }
+          if (prefs && prefs.character_id) {
+            window.__pendingCharacterIdForConvo = String(prefs.character_id);
+          } else {
+            window.__pendingCharacterIdForConvo = null;
           }
         } catch (e) {}
         loadHistory();
@@ -304,6 +332,23 @@
         try { if (bgEl) bgEl.style.backgroundImage = ''; } catch (e) {}
       }
       try { localStorage.setItem('selectedCharacterId', String(ch.id)); } catch (e) {}
+      // Persist conversation meta (system prompt, character, voice)
+      const uid = userIdField.value;
+      if (uid) {
+        const voiceId = (window.ELEVENLABS_VOICE_ID || '').trim();
+        const voiceName = (voiceSelect && voiceSelect.selectedOptions && voiceSelect.selectedOptions[0] ? voiceSelect.selectedOptions[0].text : '') || '';
+        fetch(`${API_BASE}/users/${uid}/meta`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_prompt: systemPrompt,
+            character_id: ch.id,
+            character_name: ch.name || '',
+            voice_id: voiceId,
+            voice_name: voiceName
+          })
+        }).catch(() => {});
+      }
     }
 
     personaSelect.addEventListener('change', () => {
@@ -328,10 +373,10 @@
           personaSelect.appendChild(opt);
         }
         // Preselect saved character
-        const savedId = localStorage.getItem('selectedCharacterId');
-        if (savedId && characters.some(c => String(c.id) === savedId)) {
-          personaSelect.value = savedId;
-          applyCharacterSelection(savedId);
+        const savedId = window.__pendingCharacterIdForConvo || localStorage.getItem('selectedCharacterId');
+        if (savedId && characters.some(c => String(c.id) === String(savedId))) {
+          personaSelect.value = String(savedId);
+          applyCharacterSelection(String(savedId));
         } else {
           personaSelect.value = '';
           systemPrompt = '';
@@ -602,6 +647,16 @@
         const vid = (voiceSelect.value || '').trim();
         window.ELEVENLABS_VOICE_ID = vid;
         try { localStorage.setItem('elevenlabsVoiceId', vid); } catch (e) {}
+        // Persist in conversation meta
+        const uid = userIdField.value;
+        if (uid) {
+          const vname = (voiceSelect.selectedOptions && voiceSelect.selectedOptions[0] ? voiceSelect.selectedOptions[0].text : '') || '';
+          fetch(`${API_BASE}/users/${uid}/meta`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ voice_id: vid, voice_name: vname })
+          }).catch(() => {});
+        }
       });
     }
 

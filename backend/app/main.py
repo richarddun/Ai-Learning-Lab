@@ -117,6 +117,15 @@ class AvatarUpdate(BaseModel):
     avatar: str
 
 
+class UserMetaUpdate(BaseModel):
+    system_prompt: Optional[str] = None
+    voice_id: Optional[str] = None
+    voice_name: Optional[str] = None
+    character_id: Optional[int] = None
+    character_name: Optional[str] = None
+    avatar: Optional[str] = None
+
+
 @app.post("/chat")
 async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     """Proxy a chat request to the OpenRouter API while persisting history."""
@@ -258,6 +267,35 @@ def update_user_avatar(user_id: int, req: AvatarUpdate, db: Session = Depends(ge
     except Exception:
         # Fallback: store as plain string
         user.preferences = str({"avatar": req.avatar})
+    db.commit()
+    db.refresh(user)
+    return {"id": user.id, "name": user.name, "preferences": user.preferences}
+
+
+@app.put("/users/{user_id}/meta")
+def update_user_meta(user_id: int, req: UserMetaUpdate, db: Session = Depends(get_db)):
+    """Merge arbitrary conversation metadata into preferences JSON.
+
+    Accepts any subset of: system_prompt, voice_id, voice_name, character_id, character_name, avatar.
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    import json
+    prefs = {}
+    try:
+        if user.preferences:
+            prefs = json.loads(user.preferences)
+    except Exception:
+        prefs = {}
+    payload = {k: v for k, v in req.dict().items() if v is not None}
+    if not payload:
+        return {"id": user.id, "name": user.name, "preferences": user.preferences or ""}
+    prefs.update(payload)
+    try:
+        user.preferences = json.dumps(prefs)
+    except Exception:
+        user.preferences = str(prefs)
     db.commit()
     db.refresh(user)
     return {"id": user.id, "name": user.name, "preferences": user.preferences}
