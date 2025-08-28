@@ -50,8 +50,8 @@
           <div style="margin-bottom:0.5rem">
             <label for="char-avatar-style">Avatar Style:</label>
             <select id="char-avatar-style" style="width:100%; margin-top:0.25rem">
-              <option value="friendly colorful cartoon portrait, kid-safe">Cartoon</option>
-              <option value="storybook watercolor illustration, kid-safe">Storybook</option>
+              <option value="friendly colorful cartoon portrait">Cartoon</option>
+              <option value="storybook watercolor illustration">Storybook</option>
               <option value="bright sci-fi cartoon, kid-safe">Sci‑Fi</option>
               <option value="whimsical fantasy cartoon, kid-safe">Fantasy</option>
               <option value="minimalist flat vector avatar, kid-safe">Minimal</option>
@@ -60,6 +60,12 @@
             <select id="char-avatar-size" style="width:100%; margin-top:0.25rem">
               <option value="1024x1024" selected>1024 x 1024</option>
               <option value="1024x1792">1024 x 1792 (portrait)</option>
+          <div style="margin-top:0.5rem">
+            <label>
+              <input type="checkbox" id="char-avatar-include-sp" />
+              Include character system prompt (may cause rejections)
+            </label>
+          </div>
               <option value="1792x1024">1792 x 1024 (landscape)</option>
             </select>
           </div>
@@ -523,13 +529,15 @@
       const promptEl = document.getElementById('char-avatar-prompt');
       const prompt = promptEl ? promptEl.value.trim() : '';
       genAvatarBtn.disabled = true;
+      const incSpEl = document.getElementById('char-avatar-include-sp');
+      const include_system_prompt = !!(incSpEl && incSpEl.checked);
       const oldText = genAvatarBtn.textContent;
       genAvatarBtn.textContent = 'Generating…';
       try {
         const res = await fetch(`${API_BASE}/characters/${targetId}/avatar/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ style, prompt, size })
+          body: JSON.stringify({ style, prompt, size, include_system_prompt })
         });
         if (!res.ok) {
           const t = await res.text().catch(() => 'Unknown error');

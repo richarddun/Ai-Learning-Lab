@@ -21,7 +21,12 @@ body {
 }
 
 /* Landing now shows conversations, keep button styling generic */
-
+#new-convo-btn {
+  background-color: green;
+  border-style: solid;
+  border-radius: 10%;
+  width: 80px;
+}
 #profiles button:hover {
   background: linear-gradient(135deg, #f2f2f2, #bfbfbf);
 }

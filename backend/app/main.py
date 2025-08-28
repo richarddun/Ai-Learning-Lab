@@ -101,6 +101,7 @@ class AvatarGenerateRequest(BaseModel):
     style: Optional[str] = None
     size: Optional[str] = None  # e.g., "512x512"
     seed: Optional[int] = None
+    include_system_prompt: Optional[bool] = False
 
 
 class ImportMessage(BaseModel):
@@ -418,7 +419,9 @@ async def generate_character_avatar(char_id: int, req: AvatarGenerateRequest, db
     sys_prompt = (c.system_prompt or "").strip()
     extra_prompt = (req.prompt or "").strip()
     composed_prompt = f"{base_style}. Profile picture of {name}."
-    if sys_prompt:
+    # Only include the character system prompt if explicitly requested.
+    # This helps avoid safety rejections from aggressive content filters.
+    if req.include_system_prompt and sys_prompt:
         composed_prompt += f" Personality: {sys_prompt[:300]}"
     if extra_prompt:
         composed_prompt += f" {extra_prompt}"
