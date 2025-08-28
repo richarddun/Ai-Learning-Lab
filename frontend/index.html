@@ -80,7 +80,7 @@
         <div id="chat-avatar-bg" aria-hidden="true"></div>
         <div id="chat"></div>
         <div id="input-area">
-          <input id="prompt" type="text" placeholder="Say something..." size="40" />
+          <textarea id="prompt" placeholder="Say something... (Shift+Enter for newline)" rows="3"></textarea>
           <button id="send-btn">Send</button>
           <button id="listen-btn" title="Push-to-talk (Shift+S)">🎤</button>
           <span id="recording-hint" aria-live="polite">Recording…</span>
@@ -142,6 +142,36 @@
     }
     function stopSpeakingIndicator() {
       try { profileAvatar.classList.remove('speaking'); } catch (e) {}
+    }
+
+    // Softens risky terms in avatar prompts to avoid safety rejections
+    function softenAvatarPrompt(txt) {
+      if (!txt) return 'Friendly cartoon portrait, kid-safe, G-rated, no violence, no weapons.';
+      let s = String(txt);
+      const repl = [
+        [/\bedge of a cliff\b/gi, 'rocky ledge'],
+        [/\bcliff\b/gi, 'rocky ledge'],
+        [/\bclub\b/gi, 'walking stick'],
+        [/\bweapon(s)?\b/gi, 'toy prop'],
+        [/\bknife(s)?\b/gi, 'plastic kitchen tool'],
+        [/\bgun(s)?\b/gi, 'toy gadget'],
+        [/\bsword(s)?\b/gi, 'foam sword'],
+        [/\baxe(s)?\b/gi, 'wooden tool'],
+        [/\bspear(s)?\b/gi, 'wooden staff'],
+        [/\bblood(y)?\b/gi, 'muddy'],
+        [/\bgore(y)?\b/gi, 'messy'],
+        [/\bkill(ed|ing)?\b/gi, 'defeat'],
+        [/\bdead\b/gi, 'asleep'],
+        [/\bdeath\b/gi, 'asleep'],
+        [/\bcorpse\b/gi, 'figure'],
+        [/\bmeat\b/gi, 'meal'],
+        [/\bflame(s|d|ing)?\b/gi, 'glow'],
+      ];
+      for (const [re, to] of repl) s = s.replace(re, to);
+      // Append clear kid-safe constraints if not present
+      const tail = ' kid-safe, G-rated, friendly colorful cartoon, no violence, no weapons, simple background.';
+      if (!/kid-safe|G-rated|no\s+violence|no\s+weapons/i.test(s)) s = s.trim().replace(/[\.;:,]*$/, '') + tail;
+      return s;
     }
 
     let systemPrompt = '';
@@ -498,12 +528,20 @@
             }
             const text = (body && body.error && body.error.message) || body.message || String(body);
             if (text && /content_policy_violation|safety system|rejected/i.test(text)) {
-              msg = 'Requested avatar was rejected due to content policies. Please modify your prompt and try again.';
+              const promptEl = document.getElementById('char-avatar-prompt');
+              const current = promptEl ? promptEl.value : '';
+              const softened = softenAvatarPrompt(current);
+              if (promptEl && softened) promptEl.value = softened;
+              msg = `Requested avatar was rejected due to content policies. Please modify your prompt and try again.\n\nSuggested edit:\n${softened}`;
             } else if (text) {
               msg = `Avatar generation failed: ${text}`;
             }
           } else if (/content_policy_violation|safety system|rejected/i.test(raw)) {
-            msg = 'Requested avatar was rejected due to content policies. Please modify your prompt and try again.';
+            const promptEl = document.getElementById('char-avatar-prompt');
+            const current = promptEl ? promptEl.value : '';
+            const softened = softenAvatarPrompt(current);
+            if (promptEl && softened) promptEl.value = softened;
+            msg = `Requested avatar was rejected due to content policies. Please modify your prompt and try again.\n\nSuggested edit:\n${softened}`;
           }
         } catch (_) {}
         alert(msg);
@@ -596,6 +634,16 @@
       if (wantSpeech) {
         speak(botText);
       }
+    }
+
+    // Enter submits; Shift+Enter creates newline
+    if (promptInput) {
+      promptInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          document.getElementById('send-btn').click();
+        }
+      });
     }
 
     async function loadHistory() {
