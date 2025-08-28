@@ -20,6 +20,8 @@ body {
   cursor: pointer;
 }
 
+/* Landing now shows conversations, keep button styling generic */
+
 #profiles button:hover {
   background: linear-gradient(135deg, #f2f2f2, #bfbfbf);
 }
@@ -32,6 +34,18 @@ body {
   border-bottom: 1px solid #666;
   color: #1b1b1b;
 }
+
+#back-btn {
+  margin-right: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  background: #444;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#back-btn:hover { background: #555; }
 
 #topbar img {
   width: 40px;
@@ -63,6 +77,58 @@ body {
   flex-direction: column;
 }
 
+/* Chat background avatar overlay */
+#chat-area { position: relative; }
+#chat-avatar-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0.08;
+}
+
+#voice-config {
+  margin-top: 1rem;
+}
+
+#voice-select {
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.3rem 0.4rem;
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+}
+
+#sidebar button {
+  margin-right: 0.25rem;
+  padding: 0.3rem 0.6rem;
+  background: #444;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#sidebar button:hover {
+  background: #555;
+}
+
+/* Speaking indicator Level A on header avatar */
+#topbar img.speaking {
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.8);
+  animation: pulse-ring 1.2s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(255,255,255,0.6); }
+  70% { box-shadow: 0 0 0 10px rgba(255,255,255,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+}
+
 #chat {
   flex: 1;
   padding: 1rem;
@@ -73,6 +139,109 @@ body {
   border-top: 1px solid #666;
   padding: 0.5rem;
   background: #2a2a2a;
+}
+
+#listen-btn {
+  margin-left: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  background: #444;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  position: relative; /* for spinner positioning */
+}
+
+#listen-btn:hover {
+  background: #555;
+}
+
+#listen-btn.recording {
+  background: #b71c1c; /* deep red */
+  border-color: #ff5252;
+  color: #fff;
+}
+
+/* Spinner for processing (transcription in progress) */
+#listen-btn.processing::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -20px; /* place spinner just to the right of the button */
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #ffffff;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+#recording-hint {
+  margin-left: 0.5rem;
+  font-size: 0.9rem;
+  color: #ff8a80;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+#recording-hint.show {
+  opacity: 1;
+}
+
+#speech-toggle {
+  margin-left: 0.5rem;
+  padding: 0.3rem 0.4rem;
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+}
+
+.export-controls {
+  margin-left: 0.5rem;
+}
+
+#export-format {
+  margin-left: 0.25rem;
+  padding: 0.3rem 0.4rem;
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+}
+
+#export-btn {
+  margin-left: 0.25rem;
+  padding: 0.35rem 0.6rem;
+  background: #444;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#export-btn:hover {
+  background: #555;
+}
+
+#import-btn {
+  margin-left: 0.25rem;
+  padding: 0.35rem 0.6rem;
+  background: #444;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#import-btn:hover {
+  background: #555;
 }
 
 #chat-interface {

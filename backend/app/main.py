@@ -1,6 +1,11 @@
 from typing import List, Optional
+from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
+import logging
+import random
+import os
+import base64
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel
@@ -25,6 +30,7 @@ def get_db():
 
 
 app = FastAPI(title="AI Learning Lab")
+logger = logging.getLogger("uvicorn.error")
 
 
 class ChatRequest(BaseModel):
@@ -66,6 +72,51 @@ class PreferencesUpdate(BaseModel):
     preferences: str
 
 
+class TTSRequest(BaseModel):
+    text: str
+    voice_id: Optional[str] = None
+    # Optional tunables mirrored to ElevenLabs client; ignored if not provided
+    stability: Optional[float] = None
+    similarity_boost: Optional[float] = None
+    style: Optional[float] = None
+    use_speaker_boost: Optional[bool] = None
+
+
+class CharacterCreate(BaseModel):
+    name: str
+    system_prompt: str = ""
+    voice_id: str = ""
+    avatar: str = ""
+
+
+class CharacterUpdate(BaseModel):
+    name: Optional[str] = None
+    system_prompt: Optional[str] = None
+    voice_id: Optional[str] = None
+    avatar: Optional[str] = None
+
+
+class AvatarGenerateRequest(BaseModel):
+    prompt: Optional[str] = None
+    style: Optional[str] = None
+    size: Optional[str] = None  # e.g., "512x512"
+    seed: Optional[int] = None
+
+
+class ImportMessage(BaseModel):
+    role: str
+    content: str
+    timestamp: Optional[str] = None
+
+
+class ImportRequest(BaseModel):
+    messages: List[ImportMessage]
+
+
+class AvatarUpdate(BaseModel):
+    avatar: str
+
+
 @app.post("/chat")
 async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     """Proxy a chat request to the OpenRouter API while persisting history."""
@@ -77,7 +128,24 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     db.add(user_msg)
     db.commit()
 
-    response_text = await chat_with_openrouter(req.message, req.system_prompt)
+    # Build structured messages array (system + recent conversation)
+    # Limit to the most recent 20 messages to keep token usage reasonable
+    messages_q = (
+        db.query(models.Message)
+        .filter(models.Message.user_id == user.id)
+        .order_by(models.Message.timestamp.desc())
+        .limit(20)
+        .all()
+    )
+    messages_q.reverse()
+    role_map = {"user": "user", "bot": "assistant"}
+    messages = []
+    if req.system_prompt:
+        messages.append({"role": "system", "content": req.system_prompt})
+    for m in messages_q:
+        messages.append({"role": role_map.get(m.role, m.role), "content": m.content})
+
+    response_text = await chat_with_openrouter(messages=messages)
 
     bot_msg = models.Message(user_id=user.id, role="bot", content=response_text)
     db.add(bot_msg)
@@ -93,7 +161,11 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user_msg = models.Message(user_id=user.id, role="user", content=req.message)
+    # Store the user ID locally since accessing attributes on a SQLAlchemy model
+    # after the session is closed can raise `DetachedInstanceError`.
+    user_id = user.id
+
+    user_msg = models.Message(user_id=user_id, role="user", content=req.message)
     db.add(user_msg)
     db.commit()
 
@@ -101,10 +173,27 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
 
     async def event_gen():
         nonlocal response_text
-        async for token in stream_chat_with_openrouter(req.message, req.system_prompt):
+        # Build structured messages array including the just-saved user message
+        messages_q = (
+            db.query(models.Message)
+            .filter(models.Message.user_id == user_id)
+            .order_by(models.Message.timestamp.desc())
+            .limit(20)
+            .all()
+        )
+        messages_q.reverse()
+        role_map = {"user": "user", "bot": "assistant"}
+        messages = []
+        if req.system_prompt:
+            messages.append({"role": "system", "content": req.system_prompt})
+        for m in messages_q:
+            messages.append({"role": role_map.get(m.role, m.role), "content": m.content})
+
+        async for token in stream_chat_with_openrouter(messages=messages):
             response_text += token
             yield token
-        bot_msg = models.Message(user_id=user.id, role="bot", content=response_text)
+        # Use the stored user_id to avoid accessing attributes on a detached instance
+        bot_msg = models.Message(user_id=user_id, role="bot", content=response_text)
         db.add(bot_msg)
         db.commit()
 
@@ -124,6 +213,18 @@ def create_user(req: UserCreate, db: Session = Depends(get_db)):
     return {"id": user.id, "name": user.name, "preferences": user.preferences}
 
 
+@app.get("/users")
+def list_users(db: Session = Depends(get_db)):
+    """List all users (conversations)."""
+    users = db.query(models.User).order_by(models.User.id.desc()).all()
+    return {
+        "users": [
+            {"id": u.id, "name": u.name, "preferences": u.preferences or ""}
+        for u in users
+        ]
+    }
+
+
 @app.put("/users/{user_id}/preferences")
 def update_preferences(
     user_id: int, req: PreferencesUpdate, db: Session = Depends(get_db)
@@ -136,6 +237,242 @@ def update_preferences(
     db.commit()
     db.refresh(user)
     return {"id": user.id, "name": user.name, "preferences": user.preferences}
+
+
+@app.put("/users/{user_id}/avatar")
+def update_user_avatar(user_id: int, req: AvatarUpdate, db: Session = Depends(get_db)):
+    """Set or update the avatar URL for a conversation (stored in preferences JSON)."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    import json
+    prefs = {}
+    try:
+        if user.preferences:
+            prefs = json.loads(user.preferences)
+    except Exception:
+        prefs = {}
+    prefs["avatar"] = req.avatar
+    try:
+        user.preferences = json.dumps(prefs)
+    except Exception:
+        # Fallback: store as plain string
+        user.preferences = str({"avatar": req.avatar})
+    db.commit()
+    db.refresh(user)
+    return {"id": user.id, "name": user.name, "preferences": user.preferences}
+
+
+@app.delete("/users/{user_id}")
+def delete_user(user_id: int, db: Session = Depends(get_db)):
+    """Delete a user (conversation) and all its messages."""
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    # Delete messages explicitly to avoid FK constraint issues
+    db.query(models.Message).filter(models.Message.user_id == user_id).delete()
+    db.delete(user)
+    db.commit()
+    return {"deleted": True}
+
+
+# --- Conversation naming helpers ---
+def _random_slug(seed: int | None = None) -> str:
+    rng = random.Random(seed)
+    adjectives = [
+        "brisk", "lively", "curious", "silent", "witty", "brave", "clever", "gentle",
+        "merry", "nimble", "patient", "quick", "quiet", "spry", "stellar", "vivid",
+        "sunny", "scarlet", "azure", "verdant", "crimson", "golden", "silver", "bold",
+        "candid", "bright", "serene", "restless", "arcane", "cosmic"
+    ]
+    nouns = [
+        "zebra", "falcon", "willow", "river", "canyon", "harbor", "meadow", "forest",
+        "reef", "ember", "aurora", "nebula", "citadel", "harvest", "summit", "oasis",
+        "echo", "harp", "compass", "lantern", "quartz", "atlas", "comet", "horizon"
+    ]
+    places = [
+        "harbor", "valley", "garden", "grove", "spire", "bay", "crest", "dunes",
+        "isle", "heights", "fields", "hollow", "ridge", "shore", "woods"
+    ]
+    return f"{rng.choice(adjectives)}-{rng.choice(nouns)}-{rng.choice(places)}"
+
+
+@app.get("/conversations/suggest_name")
+def suggest_name(seed: Optional[int] = None):
+    """Return a suggested human-friendly slug to name a conversation."""
+    slug = _random_slug(seed)
+    return {"name": slug}
+
+
+@app.put("/users/{user_id}/name")
+def rename_user(user_id: int, name: str, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.name = name
+    db.commit()
+    db.refresh(user)
+    return {"id": user.id, "name": user.name}
+
+
+@app.post("/users/{user_id}/suggest_name")
+async def suggest_name_from_history(user_id: int, db: Session = Depends(get_db)):
+    """Suggest a 7-word title using recent conversation via LLM.
+
+    Falls back to a random slug if LLM key/config not available.
+    """
+    try:
+        # Build a compact transcript
+        messages = (
+            db.query(models.Message)
+            .filter(models.Message.user_id == user_id)
+            .order_by(models.Message.timestamp.desc())
+            .limit(20)
+            .all()
+        )
+        messages.reverse()
+        lines = []
+        for m in messages:
+            role = "User" if m.role == "user" else "Assistant"
+            lines.append(f"{role}: {m.content}")
+        transcript = "\n".join(lines)
+
+        prompt = (
+            "You write short titles. Given a chat transcript, "
+            "respond with a concise, 7-word conversation title. "
+            "No quotes, no punctuation except spaces.\n\n" + transcript
+        )
+        # Use OpenRouter helper; if not configured it returns a message string
+        title = await chat_with_openrouter(prompt, system_prompt="")
+        # Sanitize: keep max 7 words
+        words = [w for w in title.strip().split() if w]
+        if not words:
+            raise RuntimeError("empty title")
+        title7 = " ".join(words[:7])
+        return {"name": title7}
+    except Exception:
+        # Fallback to slug
+        return {"name": _random_slug()}
+
+
+@app.post("/characters/{char_id}/avatar/generate")
+async def generate_character_avatar(char_id: int, req: AvatarGenerateRequest, db: Session = Depends(get_db)):
+    """Generate a kid-friendly avatar image for a character using OpenAI Images.
+
+    Stores the image under frontend/assets/characters/{id}/ and updates the character avatar URL.
+    """
+    c = db.query(models.Character).filter(models.Character.id == char_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Character not found")
+
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        raise HTTPException(status_code=503, detail="Image provider not configured")
+
+    # Build a safe, kid-friendly prompt
+    base_style = (
+        req.style
+        or "friendly colorful cartoon portrait, kid-safe, no violence, no weapons, no text, simple background"
+    )
+    # Supported sizes for OpenAI Images: 1024x1024, 1024x1792, 1792x1024
+    size = req.size or "1024x1024"
+    name = c.name or "Character"
+    sys_prompt = (c.system_prompt or "").strip()
+    extra_prompt = (req.prompt or "").strip()
+    composed_prompt = f"{base_style}. Profile picture of {name}."
+    if sys_prompt:
+        composed_prompt += f" Personality: {sys_prompt[:300]}"
+    if extra_prompt:
+        composed_prompt += f" {extra_prompt}"
+
+    # Call OpenAI Images API directly with httpx
+    import httpx
+
+    headers = {
+        "Authorization": f"Bearer {openai_key}",
+        "Content-Type": "application/json",
+    }
+
+    async def fetch_image_bytes(model: str) -> bytes:
+        body = {
+            "model": model,
+            "prompt": composed_prompt,
+            "size": size,
+            "n": 1,
+            "response_format": "b64_json",
+        }
+        if req.seed is not None:
+            # Some models may ignore/deny seed; harmless to include
+            body["seed"] = req.seed
+        async with httpx.AsyncClient(timeout=90) as client:
+            r = await client.post("https://api.openai.com/v1/images/generations", headers=headers, json=body)
+            if r.status_code >= 400:
+                # Log server response body for diagnosis
+                try:
+                    logger.error("/avatar/generate %s error %s: %s", model, r.status_code, r.text)
+                except Exception:
+                    pass
+                r.raise_for_status()
+            content = r.json()
+        data = content.get("data", [])
+        if not data:
+            raise RuntimeError("No image data returned")
+        b64 = data[0].get("b64_json")
+        if b64:
+            return base64.b64decode(b64)
+        # Fallback: download URL if provided
+        url = data[0].get("url")
+        if not url:
+            raise RuntimeError("No base64 or URL image content returned")
+        async with httpx.AsyncClient(timeout=90) as client:
+            resp = await client.get(url)
+            if resp.status_code >= 400:
+                logger.error("/avatar/generate download error %s: %s", resp.status_code, resp.text)
+                resp.raise_for_status()
+            return resp.content
+
+    # Try gpt-image-1, then fallback to dall-e-3 if 4xx indicates unsupported params/model
+    try:
+        try:
+            img_bytes = await fetch_image_bytes(os.getenv("IMAGE_MODEL", "gpt-image-1"))
+        except httpx.HTTPStatusError as he:
+            if 400 <= he.response.status_code < 500:
+                # Fallback model
+                img_bytes = await fetch_image_bytes("dall-e-3")
+            else:
+                raise
+    except Exception as e:
+        # Surface upstream error text if present
+        detail = str(e)
+        if isinstance(e, httpx.HTTPStatusError):
+            try:
+                detail = e.response.text
+            except Exception:
+                detail = str(e)
+        logger.exception("/characters/%s/avatar/generate failed: %s", char_id, detail)
+        raise HTTPException(status_code=502, detail=detail)
+
+    try:
+        if not img_bytes or len(img_bytes) == 0:
+            raise RuntimeError("Empty image bytes")
+        # Write to frontend assets
+        root = Path(__file__).resolve().parent.parent.parent
+        out_dir = root / "frontend" / "assets" / "characters" / str(char_id)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"avatar-{int(__import__('time').time())}.png"
+        out_path = out_dir / filename
+        with open(out_path, "wb") as f:
+            f.write(img_bytes)
+
+        # Public URL path relative to static mount
+        rel_url = f"/assets/characters/{char_id}/{filename}"
+        c.avatar = rel_url
+        db.commit()
+        db.refresh(c)
+        return {"avatar": rel_url}
+    except Exception as e:
+        logger.exception("/characters/%s/avatar/generate store failed: %s", char_id, e)
+        raise HTTPException(status_code=500, detail="Image store failed")
 
 
 @app.get("/users/{user_id}/history")
@@ -155,6 +492,210 @@ def get_history(user_id: int, db: Session = Depends(get_db)):
         for m in messages
     ]
     return {"history": history}
+
+
+# --- Characters CRUD ---
+@app.get("/characters")
+def list_characters(db: Session = Depends(get_db)):
+    chars = db.query(models.Character).order_by(models.Character.name).all()
+    return {
+        "characters": [
+            {
+                "id": c.id,
+                "name": c.name,
+                "system_prompt": c.system_prompt,
+                "voice_id": c.voice_id,
+                "avatar": c.avatar,
+            }
+            for c in chars
+        ]
+    }
+
+
+@app.post("/characters")
+def create_character(req: CharacterCreate, db: Session = Depends(get_db)):
+    existing = (
+        db.query(models.Character).filter(models.Character.name == req.name).first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="Character with this name exists")
+    c = models.Character(
+        name=req.name,
+        system_prompt=req.system_prompt,
+        voice_id=req.voice_id,
+        avatar=req.avatar,
+    )
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return {
+        "id": c.id,
+        "name": c.name,
+        "system_prompt": c.system_prompt,
+        "voice_id": c.voice_id,
+        "avatar": c.avatar,
+    }
+
+
+@app.put("/characters/{char_id}")
+def update_character(char_id: int, req: CharacterUpdate, db: Session = Depends(get_db)):
+    c = db.query(models.Character).filter(models.Character.id == char_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Character not found")
+    if req.name is not None:
+        c.name = req.name
+    if req.system_prompt is not None:
+        c.system_prompt = req.system_prompt
+    if req.voice_id is not None:
+        c.voice_id = req.voice_id
+    if req.avatar is not None:
+        c.avatar = req.avatar
+    db.commit()
+    db.refresh(c)
+    return {
+        "id": c.id,
+        "name": c.name,
+        "system_prompt": c.system_prompt,
+        "voice_id": c.voice_id,
+        "avatar": c.avatar,
+    }
+
+
+@app.delete("/characters/{char_id}")
+def delete_character(char_id: int, db: Session = Depends(get_db)):
+    c = db.query(models.Character).filter(models.Character.id == char_id).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Character not found")
+    db.delete(c)
+    db.commit()
+    return {"deleted": True}
+
+
+# --- TTS (ElevenLabs) endpoint ---
+@app.post("/tts")
+async def tts(req: TTSRequest):
+    """Synthesize speech using ElevenLabs and return MP3 bytes.
+
+    If ElevenLabs is not configured or errors, returns 503/502 so the frontend
+    can fall back to browser SpeechSynthesis.
+    """
+    import os
+    from tts.elevenlabs_client import ElevenLabsTTSClient
+
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        # Not configured; let frontend fall back
+        logger.warning("/tts: ELEVENLABS_API_KEY not configured; returning 503 for fallback")
+        return Response(status_code=503, content=b"", media_type="application/octet-stream")
+
+    voice_id = req.voice_id or os.getenv("ELEVENLABS_VOICE_ID")
+    if not voice_id:
+        # Voice not specified
+        logger.warning("/tts: Missing voice_id (no request voice_id and ELEVENLABS_VOICE_ID not set)")
+        return Response(status_code=400, content=b"Missing voice_id", media_type="text/plain")
+
+    try:
+        client = ElevenLabsTTSClient(api_key=api_key)
+        logger.info("/tts: Starting ElevenLabs synthesis (len(text)=%d, voice_id=%s)", len(req.text or ""), voice_id)
+        kwargs = {}
+        if req.stability is not None:
+            kwargs["stability"] = req.stability
+        if req.similarity_boost is not None:
+            kwargs["similarity_boost"] = req.similarity_boost
+        if req.style is not None:
+            kwargs["style"] = req.style
+        if req.use_speaker_boost is not None:
+            kwargs["use_speaker_boost"] = req.use_speaker_boost
+
+        # Collect streamed MP3 chunks into a single buffer
+        buf = bytearray()
+        chunk_count = 0
+        for chunk in client.stream(req.text, voice_id, **kwargs):
+            if chunk:
+                buf.extend(chunk)
+                chunk_count += 1
+        logger.info("/tts: ElevenLabs synthesis completed (chunks=%d, bytes=%d)", chunk_count, len(buf))
+
+        return Response(content=bytes(buf), media_type="audio/mpeg")
+    except Exception as e:
+        # Let frontend fall back to speech synthesis
+        logger.exception("/tts: ElevenLabs synthesis failed: %s", e)
+        return Response(status_code=502, content=str(e).encode("utf-8"), media_type="text/plain")
+
+
+@app.get("/tts/voices")
+async def list_voices():
+    """Return available ElevenLabs voices (id + name).
+
+    If API key not set, return 503 so frontend can hide selector.
+    """
+    import os
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        logger.warning("/tts/voices: ELEVENLABS_API_KEY not configured")
+        return Response(status_code=503)
+
+    try:
+        from tts.elevenlabs_client import ElevenLabsTTSClient
+        client = ElevenLabsTTSClient(api_key=api_key)
+        raw_voices = client.list_voices()
+
+        def get(v, key, alt=None):
+            # Handles object or dict
+            if isinstance(v, dict):
+                return v.get(key) or (v.get(alt) if alt else None)
+            return getattr(v, key, None) or (getattr(v, alt, None) if alt else None)
+
+        voices = []
+        for v in raw_voices or []:
+            vid = get(v, "voice_id", "id")
+            name = get(v, "name") or vid or "Unnamed"
+            category = get(v, "category") or ""
+            voices.append({"voice_id": vid, "name": name, "category": category})
+
+        return {"voices": voices}
+    except Exception as e:
+        logger.exception("/tts/voices: failed to fetch voices: %s", e)
+        return Response(status_code=502, content=str(e).encode("utf-8"), media_type="text/plain")
+
+
+@app.post("/users/{user_id}/history/import")
+def import_history(user_id: int, req: ImportRequest, db: Session = Depends(get_db)):
+    """Import a list of messages into a user's history (JSON only).
+
+    Accepts roles of 'user', 'bot', or 'assistant' (assistant is mapped to 'bot').
+    Ignores 'system' messages.
+    """
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    def parse_ts(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            dt = datetime.fromisoformat(value)
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return dt
+        except Exception:
+            return None
+
+    created = 0
+    for m in req.messages:
+        role = (m.role or "").lower().strip()
+        if role == "assistant":
+            role = "bot"
+        if role not in ("user", "bot"):
+            continue  # skip unsupported roles like 'system'
+        ts = parse_ts(m.timestamp)
+        msg = models.Message(user_id=user.id, role=role, content=m.content)
+        if ts is not None:
+            msg.timestamp = ts
+        db.add(msg)
+        created += 1
+    db.commit()
+    return {"imported": created}
 
 
 # Serve the frontend directory as static files at the root.

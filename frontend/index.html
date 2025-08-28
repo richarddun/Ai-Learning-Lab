@@ -8,13 +8,17 @@
 <body>
 
   <div id="landing">
-    <h1>Select Your Profile</h1>
-    <div id="profiles"></div>
+    <h1>Select Conversation</h1>
+    <div style="margin-bottom:0.5rem">
+      <button id="new-convo-btn">New</button>
+    </div>
+    <div id="conversations"></div>
   </div>
 
   <div id="chat-interface">
     <input type="hidden" id="user-id" />
     <div id="topbar">
+      <button id="back-btn" title="Back to conversations">⟵ Back</button>
       <img id="profile-avatar" src="" alt="avatar" />
       <span id="profile-name"></span>
       <span class="title">AI Learning Lab</span>
@@ -22,21 +26,78 @@
     <div id="container">
       <div id="sidebar">
         <h3>Configuration</h3>
-        <label for="persona-select">Persona:</label>
+        <label for="persona-select">Character:</label>
         <select id="persona-select">
-          <option value="">Default</option>
-          <option value="robot">Robot Gremlin</option>
-          <option value="wizard">Wizard</option>
-          <option value="fairy">Fairy</option>
-          <option value="pirate">Pirate</option>
+          <option value="">(loading…)</option>
         </select>
+        <div style="margin-top:0.5rem">
+          <button id="new-character-btn">New</button>
+          <button id="edit-character-btn">Edit</button>
+          <button id="delete-character-btn">Delete</button>
+        </div>
+        <div id="new-character-form" style="display:none; margin-top:0.5rem">
+          <input id="char-name" type="text" placeholder="Name" style="width:100%; margin-bottom:0.3rem"/>
+          <textarea id="char-prompt" placeholder="System prompt (persona)" rows="4" style="width:100%; margin-bottom:0.3rem"></textarea>
+          <input id="char-avatar" type="text" placeholder="Avatar URL (optional)" style="width:100%; margin-bottom:0.3rem"/>
+          <label for="char-voice">Voice:</label>
+          <select id="char-voice" style="width:100%; margin-bottom:0.5rem">
+            <option value="">(use current voice)</option>
+          </select>
+          <div style="margin-bottom:0.5rem">
+            <label for="char-avatar-prompt">Avatar Prompt (optional):</label>
+            <textarea id="char-avatar-prompt" placeholder="Describe the look (kid‑safe)" rows="2" style="width:100%; margin-top:0.25rem"></textarea>
+          </div>
+          <div style="margin-bottom:0.5rem">
+            <label for="char-avatar-style">Avatar Style:</label>
+            <select id="char-avatar-style" style="width:100%; margin-top:0.25rem">
+              <option value="friendly colorful cartoon portrait, kid-safe">Cartoon</option>
+              <option value="storybook watercolor illustration, kid-safe">Storybook</option>
+              <option value="bright sci-fi cartoon, kid-safe">Sci‑Fi</option>
+              <option value="whimsical fantasy cartoon, kid-safe">Fantasy</option>
+              <option value="minimalist flat vector avatar, kid-safe">Minimal</option>
+            </select>
+            <label for="char-avatar-size" style="display:block; margin-top:0.5rem">Avatar Size:</label>
+            <select id="char-avatar-size" style="width:100%; margin-top:0.25rem">
+              <option value="1024x1024" selected>1024 x 1024</option>
+              <option value="1024x1792">1024 x 1792 (portrait)</option>
+              <option value="1792x1024">1792 x 1024 (landscape)</option>
+            </select>
+          </div>
+          <div>
+            <button id="save-character-btn">Save</button>
+            <button id="cancel-character-btn" type="button">Cancel</button>
+            <button id="generate-avatar-btn" type="button" title="Generate avatar from prompt">Generate Avatar</button>
+          </div>
+        </div>
+        <div id="voice-config">
+          <label for="voice-select">Voice:</label>
+          <select id="voice-select">
+            <option value="">(loading voices…)</option>
+          </select>
+        </div>
       </div>
       <div id="chat-area">
+        <div id="chat-avatar-bg" aria-hidden="true"></div>
         <div id="chat"></div>
         <div id="input-area">
           <input id="prompt" type="text" placeholder="Say something..." size="40" />
           <button id="send-btn">Send</button>
-          <button id="listen-btn">🎤</button>
+          <button id="listen-btn" title="Push-to-talk (Shift+S)">🎤</button>
+          <span id="recording-hint" aria-live="polite">Recording…</span>
+          <select id="speech-toggle" title="Speech synthesis for replies">
+            <option value="on" selected>Speak: On</option>
+            <option value="off">Speak: Off</option>
+          </select>
+          <span class="export-controls">
+            <select id="export-format" title="Export conversation as">
+              <option value="markdown" selected>Export: Markdown</option>
+              <option value="json">Export: JSON</option>
+              <option value="text">Export: Text</option>
+            </select>
+            <button id="export-btn" title="Download conversation">Export</button>
+            <button id="import-btn" title="Import conversation JSON">Import</button>
+            <input id="import-file" type="file" accept="application/json" style="display:none" />
+          </span>
         </div>
       </div>
     </div>
@@ -47,63 +108,439 @@
   <script>
     const landing = document.getElementById('landing');
     const chatInterface = document.getElementById('chat-interface');
-    const profilesDiv = document.getElementById('profiles');
+    const conversationsDiv = document.getElementById('conversations');
     const chatDiv = document.getElementById('chat');
     const promptInput = document.getElementById('prompt');
     const personaSelect = document.getElementById('persona-select');
+    const voiceSelect = document.getElementById('voice-select');
     const profileName = document.getElementById('profile-name');
     const profileAvatar = document.getElementById('profile-avatar');
     const userIdField = document.getElementById('user-id');
+    const backBtn = document.getElementById('back-btn');
 
     const synth = window.speechSynthesis;
-
-    const personas = {
-      robot: 'You are a mischievous robot gremlin. Respond with playful mechanical mischief.',
-      wizard: 'You are a wise old wizard. Respond with arcane wisdom and spells.',
-      fairy: 'You are a whimsical fairy. Respond with a light-hearted and magical tone.',
-      pirate: 'You are a swashbuckling pirate. Speak with pirate lingo.'
-    };
+    let audioCtx; // for UI beeps
+    // Track current ElevenLabs audio playback so we can cancel it
+    let currentTtsAudio = null;
+    let currentTtsUrl = null;
+    // Stop all ongoing speech/audio helpers
+    function stopAllSpeech() {
+      try { synth.cancel(); } catch (e) {}
+      try {
+        if (currentTtsAudio) {
+          currentTtsAudio.pause();
+          currentTtsAudio.src = '';
+        }
+        if (currentTtsUrl) URL.revokeObjectURL(currentTtsUrl);
+      } catch (e) {}
+      currentTtsAudio = null;
+      currentTtsUrl = null;
+    }
+    // Speaking indicator helpers (Level A)
+    function startSpeakingIndicator() {
+      try { profileAvatar.classList.add('speaking'); } catch (e) {}
+    }
+    function stopSpeakingIndicator() {
+      try { profileAvatar.classList.remove('speaking'); } catch (e) {}
+    }
 
     let systemPrompt = '';
     let userId = null;
     const API_BASE = '';
 
-    async function loadProfiles() {
-      const res = await fetch(`${API_BASE}/profiles`);
-      const profiles = await res.json();
-      profiles.forEach((p) => {
-        const btn = document.createElement('button');
-        btn.textContent = p.name;
-        btn.onclick = () => selectProfile(p);
-        profilesDiv.appendChild(btn);
-      });
+    async function loadConversations() {
+      try {
+        const res = await fetch(`${API_BASE}/users`);
+        const data = await res.json();
+        const users = data.users || [];
+        conversationsDiv.innerHTML = '';
+        if (!users.length) {
+          const p = document.createElement('p');
+          p.textContent = 'No conversations yet.';
+          conversationsDiv.appendChild(p);
+          return;
+        }
+        users.forEach((u) => {
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.alignItems = 'center';
+          row.style.marginBottom = '0.3rem';
+          const btn = document.createElement('button');
+          btn.textContent = u.name;
+          btn.style.marginRight = '0.5rem';
+          btn.onclick = () => selectConversation(u);
+          const del = document.createElement('button');
+          del.textContent = 'Delete';
+          del.onclick = async (e) => {
+            e.stopPropagation();
+            if (!confirm('Delete this conversation?')) return;
+            const resp = await fetch(`${API_BASE}/users/${u.id}`, { method: 'DELETE' });
+            if (!resp.ok) { alert('Delete failed'); return; }
+            loadConversations();
+          };
+          const ren = document.createElement('button');
+          ren.textContent = 'Rename';
+          ren.style.marginLeft = '0.25rem';
+          ren.onclick = async (e) => {
+            e.stopPropagation();
+            let newName = prompt('New name (leave blank for AI/auto):', u.name);
+            if (newName === null) return; // cancelled
+            newName = newName.trim();
+            if (!newName) {
+              try {
+                // Try LLM summary suggestion first
+                const s = await fetch(`${API_BASE}/users/${u.id}/suggest_name`, { method: 'POST' });
+                if (s.ok) {
+                  const j = await s.json();
+                  newName = j.name || '';
+                }
+                if (!newName) {
+                  const s2 = await fetch(`${API_BASE}/conversations/suggest_name`);
+                  const j2 = await s2.json();
+                  newName = j2.name || u.name;
+                }
+              } catch (e) { newName = u.name; }
+            }
+            try {
+              const resp = await fetch(`${API_BASE}/users/${u.id}/name?name=` + encodeURIComponent(newName), { method: 'PUT' });
+              if (!resp.ok) throw new Error('Rename failed');
+              loadConversations();
+            } catch (e) {
+              alert('Rename failed');
+            }
+          };
+          row.appendChild(btn);
+          row.appendChild(del);
+          row.appendChild(ren);
+          conversationsDiv.appendChild(row);
+        });
+      } catch (e) {
+        console.error('Failed to load conversations', e);
+        conversationsDiv.textContent = 'Failed to load conversations';
+      }
     }
 
-    async function selectProfile(profile) {
+    async function selectConversation(convo) {
       try {
         const res = await fetch('/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: profile.name })
+          body: JSON.stringify({ name: convo.name })
         });
         if (!res.ok) throw new Error('User creation failed');
         const data = await res.json();
         userIdField.value = data.id;
         landing.style.display = 'none';
         chatInterface.style.display = 'block';
-        profileName.textContent = profile.name;
-        if (profile.avatar) profileAvatar.src = profile.avatar;
+        profileName.textContent = convo.name;
+        // Apply conversation avatar if present in preferences JSON
+        try {
+          const prefs = data.preferences ? JSON.parse(data.preferences) : {};
+          if (prefs && prefs.avatar) {
+            try { profileAvatar.src = prefs.avatar; } catch (e) {}
+            try { document.getElementById('chat-avatar-bg').style.backgroundImage = `url('${prefs.avatar}')`; } catch (e) {}
+          } else {
+            try { document.getElementById('chat-avatar-bg').style.backgroundImage = ''; } catch (e) {}
+          }
+        } catch (e) {}
         loadHistory();
       } catch (err) {
         console.error('Failed to create user', err);
-        alert('Could not create user profile. Please try again.');
+        alert('Could not open conversation. Please try again.');
       }
 
     }
 
+    // Characters (Personas) handling
+    let characters = [];
+    function applyCharacterSelection(id) {
+      const ch = characters.find(c => String(c.id) === String(id));
+      if (!ch) {
+        systemPrompt = '';
+        return;
+      }
+      systemPrompt = ch.system_prompt || '';
+      // Set voice if defined
+      if (ch.voice_id) {
+        window.ELEVENLABS_VOICE_ID = ch.voice_id;
+        if (voiceSelect) voiceSelect.value = ch.voice_id;
+      }
+      // Optional: swap avatar if provided and set chat background
+      const bgEl = document.getElementById('chat-avatar-bg');
+      if (ch.avatar) {
+        try { profileAvatar.src = ch.avatar; } catch (e) {}
+        try { if (bgEl) bgEl.style.backgroundImage = `url('${ch.avatar}')`; } catch (e) {}
+      } else {
+        try { if (bgEl) bgEl.style.backgroundImage = ''; } catch (e) {}
+      }
+      try { localStorage.setItem('selectedCharacterId', String(ch.id)); } catch (e) {}
+    }
+
     personaSelect.addEventListener('change', () => {
-      systemPrompt = personas[personaSelect.value] || '';
+      applyCharacterSelection(personaSelect.value);
     });
+
+    async function loadCharacters() {
+      try {
+        const res = await fetch(`${API_BASE}/characters`);
+        if (!res.ok) throw new Error(`characters http ${res.status}`);
+        const data = await res.json();
+        characters = data.characters || [];
+        personaSelect.innerHTML = '';
+        const def = document.createElement('option');
+        def.value = '';
+        def.textContent = 'Default';
+        personaSelect.appendChild(def);
+        for (const c of characters) {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.name;
+          personaSelect.appendChild(opt);
+        }
+        // Preselect saved character
+        const savedId = localStorage.getItem('selectedCharacterId');
+        if (savedId && characters.some(c => String(c.id) === savedId)) {
+          personaSelect.value = savedId;
+          applyCharacterSelection(savedId);
+        } else {
+          personaSelect.value = '';
+          systemPrompt = '';
+        }
+        // Populate new character voice selector with same voices
+        const charVoice = document.getElementById('char-voice');
+        if (charVoice && voiceSelect && voiceSelect.options.length > 0) {
+          // Copy options
+          charVoice.innerHTML = '<option value="">(use current voice)</option>';
+          for (const opt of voiceSelect.options) {
+            if (!opt.value) continue;
+            const o = document.createElement('option');
+            o.value = opt.value; o.text = opt.text;
+            charVoice.add(o);
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to load characters', e);
+        personaSelect.innerHTML = '';
+        const def = document.createElement('option');
+        def.value = '';
+        def.textContent = 'Default';
+        personaSelect.appendChild(def);
+        personaSelect.disabled = true;
+      }
+    }
+
+    // New character UI
+    const newCharBtn = document.getElementById('new-character-btn');
+    const editCharBtn = document.getElementById('edit-character-btn');
+    const deleteCharBtn = document.getElementById('delete-character-btn');
+    const newCharForm = document.getElementById('new-character-form');
+    const saveCharBtn = document.getElementById('save-character-btn');
+    const cancelCharBtn = document.getElementById('cancel-character-btn');
+    const genAvatarBtn = document.getElementById('generate-avatar-btn');
+    let editingCharacterId = null;
+    function toggleNewChar(open) {
+      newCharForm.style.display = open ? 'block' : 'none';
+    }
+    function populateCharVoiceOptions() {
+      const charVoice = document.getElementById('char-voice');
+      if (charVoice && voiceSelect) {
+        charVoice.innerHTML = '<option value="">(use current voice)</option>';
+        for (const opt of voiceSelect.options) {
+          if (!opt.value) continue;
+          const o = document.createElement('option');
+          o.value = opt.value; o.text = opt.text;
+          charVoice.add(o);
+        }
+      }
+    }
+    function openCharacterFormForNew() {
+      editingCharacterId = null;
+      populateCharVoiceOptions();
+      document.getElementById('char-name').value = '';
+      document.getElementById('char-prompt').value = '';
+      document.getElementById('char-avatar').value = '';
+      const cv = document.getElementById('char-voice');
+      if (cv && voiceSelect) cv.value = voiceSelect.value || '';
+      document.getElementById('save-character-btn').textContent = 'Save';
+      toggleNewChar(true);
+    }
+    function openCharacterFormForEdit(id) {
+      const ch = characters.find(c => String(c.id) === String(id));
+      if (!ch) { alert('Select a character to edit'); return; }
+      editingCharacterId = ch.id;
+      populateCharVoiceOptions();
+      document.getElementById('char-name').value = ch.name || '';
+      document.getElementById('char-prompt').value = ch.system_prompt || '';
+      document.getElementById('char-avatar').value = ch.avatar || '';
+      const cv = document.getElementById('char-voice');
+      if (cv) cv.value = ch.voice_id || '';
+      document.getElementById('save-character-btn').textContent = 'Update';
+      toggleNewChar(true);
+    }
+    if (newCharBtn) newCharBtn.onclick = () => openCharacterFormForNew();
+    if (editCharBtn) editCharBtn.onclick = () => {
+      const id = personaSelect.value;
+      if (!id) { alert('Select a character first'); return; }
+      openCharacterFormForEdit(id);
+    };
+    if (deleteCharBtn) deleteCharBtn.onclick = async () => {
+      const id = personaSelect.value;
+      if (!id) { alert('Select a character first'); return; }
+      if (!confirm('Delete this character?')) return;
+      try {
+        const res = await fetch(`${API_BASE}/characters/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // Clear selection if deleting current
+        if (localStorage.getItem('selectedCharacterId') === String(id)) {
+          localStorage.removeItem('selectedCharacterId');
+        }
+        await loadCharacters();
+        personaSelect.value = '';
+        applyCharacterSelection('');
+      } catch (e) {
+        console.error('Delete character failed', e);
+        alert('Could not delete character');
+      }
+    };
+    if (cancelCharBtn) cancelCharBtn.onclick = () => toggleNewChar(false);
+    if (saveCharBtn) saveCharBtn.onclick = async () => {
+      const name = document.getElementById('char-name').value.trim();
+      const prompt = document.getElementById('char-prompt').value;
+      const avatar = document.getElementById('char-avatar').value.trim();
+      const voice = document.getElementById('char-voice').value.trim();
+      if (!name) { alert('Please provide a character name'); return; }
+      try {
+        const isEdit = !!editingCharacterId;
+        const url = isEdit ? `${API_BASE}/characters/${editingCharacterId}` : `${API_BASE}/characters`;
+        const method = isEdit ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, system_prompt: prompt, voice_id: voice, avatar })
+        });
+        if (!res.ok) {
+          const t = await res.text().catch(() => '');
+          throw new Error(t || `HTTP ${res.status}`);
+        }
+        const created = await res.json();
+        toggleNewChar(false);
+        editingCharacterId = null;
+        // Clear form
+        document.getElementById('char-name').value = '';
+        document.getElementById('char-prompt').value = '';
+        document.getElementById('char-avatar').value = '';
+        document.getElementById('char-voice').value = '';
+        // Reload characters and select the new one
+        await loadCharacters();
+        const selectId = created.id;
+        personaSelect.value = selectId;
+        applyCharacterSelection(selectId);
+      } catch (e) {
+        console.error('Create character failed', e);
+        alert('Could not save character');
+      }
+    };
+
+    if (genAvatarBtn) genAvatarBtn.onclick = async () => {
+      const targetId = editingCharacterId || personaSelect.value;
+      if (!targetId) { alert('Select or save a character first'); return; }
+      const styleSel = document.getElementById('char-avatar-style');
+      const style = styleSel ? styleSel.value : '';
+      const sizeSel = document.getElementById('char-avatar-size');
+      const size = sizeSel ? sizeSel.value : '512x512';
+      const promptEl = document.getElementById('char-avatar-prompt');
+      const prompt = promptEl ? promptEl.value.trim() : '';
+      genAvatarBtn.disabled = true;
+      const oldText = genAvatarBtn.textContent;
+      genAvatarBtn.textContent = 'Generating…';
+      try {
+        const res = await fetch(`${API_BASE}/characters/${targetId}/avatar/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ style, prompt, size })
+        });
+        if (!res.ok) {
+          const t = await res.text().catch(() => 'Unknown error');
+          throw new Error(t);
+        }
+        const data = await res.json();
+        const url = data.avatar;
+        const idx = characters.findIndex(c => String(c.id) === String(targetId));
+        if (idx >= 0) characters[idx].avatar = url;
+        if (String(personaSelect.value) === String(targetId)) {
+          try { profileAvatar.src = url; } catch (e) {}
+          try { document.getElementById('chat-avatar-bg').style.backgroundImage = `url('${url}')`; } catch (e) {}
+        }
+        const avatarInput = document.getElementById('char-avatar');
+        if (avatarInput) avatarInput.value = url;
+        // Also store this avatar against the current conversation so it persists per conversation
+        const uid = userIdField.value;
+        if (uid) {
+          try {
+            await fetch(`${API_BASE}/users/${uid}/avatar`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ avatar: url })
+            });
+          } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        console.error('Avatar generation failed', e);
+        alert('Avatar generation failed');
+      } finally {
+        genAvatarBtn.disabled = false;
+        genAvatarBtn.textContent = oldText;
+      }
+    };
+
+    async function loadVoices() {
+      try {
+        const res = await fetch(`${API_BASE}/tts/voices`);
+        if (!res.ok) throw new Error(`voices http ${res.status}`);
+        const data = await res.json();
+        const saved = (localStorage.getItem('elevenlabsVoiceId') || '').trim();
+        const cfg = (window.ELEVENLABS_VOICE_ID || '').trim();
+        const preferred = saved || cfg;
+
+        voiceSelect.innerHTML = '';
+        if (!data.voices || !data.voices.length) {
+          const opt = document.createElement('option');
+          opt.value = '';
+          opt.textContent = '(no voices found)';
+          voiceSelect.appendChild(opt);
+          voiceSelect.disabled = true;
+          return;
+        }
+        for (const v of data.voices) {
+          const opt = document.createElement('option');
+          opt.value = v.voice_id || '';
+          opt.textContent = v.name || v.voice_id || 'Unnamed';
+          voiceSelect.appendChild(opt);
+        }
+        if (preferred) {
+          voiceSelect.value = preferred;
+        }
+        // Set global for speak()
+        window.ELEVENLABS_VOICE_ID = voiceSelect.value;
+        voiceSelect.disabled = false;
+      } catch (e) {
+        console.warn('Failed to load ElevenLabs voices (perhaps no API key?)', e);
+        voiceSelect.innerHTML = '';
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '(ElevenLabs unavailable)';
+        voiceSelect.appendChild(opt);
+        voiceSelect.disabled = true;
+      }
+    }
+
+    if (voiceSelect) {
+      voiceSelect.addEventListener('change', () => {
+        const vid = (voiceSelect.value || '').trim();
+        window.ELEVENLABS_VOICE_ID = vid;
+        try { localStorage.setItem('elevenlabsVoiceId', vid); } catch (e) {}
+      });
+    }
 
     async function sendMessage(text) {
       const message = text || promptInput.value;
@@ -133,7 +570,12 @@
         botP.textContent += chunk;
         chatDiv.scrollTop = chatDiv.scrollHeight;
       }
-      speak(botText);
+      // Speak only if enabled
+      const speechToggle = document.getElementById('speech-toggle');
+      const wantSpeech = !speechToggle || speechToggle.value === 'on';
+      if (wantSpeech) {
+        speak(botText);
+      }
     }
 
     async function loadHistory() {
@@ -154,34 +596,258 @@
       return p;
     }
 
-    function speak(text) {
+    async function speak(text) {
+      // Respect toggle immediately
+      const st = document.getElementById('speech-toggle');
+      if (st && st.value === 'off') return;
+
+      // Stop any ongoing speech first to avoid overlap
+      try { synth.cancel(); } catch (e) {}
+      try {
+        if (currentTtsAudio) {
+          currentTtsAudio.pause();
+          currentTtsAudio.src = '';
+        }
+        if (currentTtsUrl) {
+          URL.revokeObjectURL(currentTtsUrl);
+        }
+      } catch (e) {}
+      currentTtsAudio = null;
+      currentTtsUrl = null;
+
+      // Try ElevenLabs via backend first; fall back to browser TTS on error
+      try {
+        const voiceId = (window.ELEVENLABS_VOICE_ID || '').trim();
+        if (!voiceId) {
+          console.info('[speak] Skipping ElevenLabs: no voice configured (set window.ELEVENLABS_VOICE_ID)');
+        } else {
+          console.info('[speak] Attempting ElevenLabs TTS via /tts with voice:', voiceId);
+          const res = await fetch(`${API_BASE}/tts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, voice_id: voiceId })
+          });
+          const ct = res.headers.get('content-type') || '';
+          console.debug('[speak] /tts response', res.status, ct);
+          if (res.ok && ct.includes('audio')) {
+            const blob = await res.blob();
+            console.debug('[speak] Received ElevenLabs audio bytes:', blob.size);
+            if (blob.size > 0) {
+              // Check toggle again before playing
+              if (st && st.value === 'off') return;
+              const url = URL.createObjectURL(blob);
+              const audio = new Audio(url);
+              currentTtsAudio = audio;
+              currentTtsUrl = url;
+              audio.play().then(() => {
+                console.info('[speak] Playing ElevenLabs audio');
+                try { profileAvatar.classList.add('speaking'); } catch (e) {}
+              }).catch((err) => {
+                console.warn('[speak] Audio element play blocked, falling back to speechSynthesis', err);
+                if (!st || st.value !== 'off') {
+                  const u = new SpeechSynthesisUtterance(text);
+                  u.onstart = () => { try { profileAvatar.classList.add('speaking'); } catch (e) {} };
+                  u.onend = () => { try { profileAvatar.classList.remove('speaking'); } catch (e) {} };
+                  synth.speak(u);
+                }
+              });
+              // Revoke URL when done
+              audio.onended = () => {
+                if (currentTtsUrl) URL.revokeObjectURL(currentTtsUrl);
+                currentTtsUrl = null;
+                currentTtsAudio = null;
+                try { profileAvatar.classList.remove('speaking'); } catch (e) {}
+              };
+              return;
+            } else {
+              console.warn('[speak] ElevenLabs returned empty audio; falling back');
+            }
+          } else {
+            const errText = !ct.includes('audio') ? (await res.text().catch(() => '')) : '';
+            console.warn('[speak] /tts did not return audio. status:', res.status, 'body:', errText);
+          }
+        }
+      } catch (e) {
+        console.error('[speak] ElevenLabs flow threw error; falling back to speechSynthesis', e);
+      }
+      // Browser speech synthesis fallback
       const utterance = new SpeechSynthesisUtterance(text);
-      synth.speak(utterance);
+      console.info('[speak] Using browser SpeechSynthesis');
+      if (!st || st.value !== 'off') {
+        utterance.onstart = () => { try { profileAvatar.classList.add('speaking'); } catch (e) {} };
+        utterance.onend = () => { try { profileAvatar.classList.remove('speaking'); } catch (e) {} };
+        synth.speak(utterance);
+      }
     }
 
-    async function startListening() {
+    async function exportConversation() {
+      const userId = userIdField.value;
+      if (!userId) {
+        alert('No user selected');
+        return;
+      }
+      try {
+        const res = await fetch(`${API_BASE}/users/${userId}/history`);
+        if (!res.ok) throw new Error('Failed to fetch history');
+        const data = await res.json();
+        const formatSel = document.getElementById('export-format');
+        const format = (formatSel && formatSel.value) || 'markdown';
+        const filenameBase = `conversation-${new Date().toISOString().replace(/[:.]/g,'-')}`;
+        let blob;
+        if (format === 'json') {
+          blob = new Blob([JSON.stringify(data.history, null, 2)], { type: 'application/json' });
+          triggerDownload(blob, `${filenameBase}.json`);
+        } else if (format === 'text') {
+          const lines = data.history.map(h => `${h.role.toUpperCase()}: ${h.content}`);
+          blob = new Blob([lines.join('\n\n')], { type: 'text/plain' });
+          triggerDownload(blob, `${filenameBase}.txt`);
+        } else {
+          // markdown
+          const header = `# Conversation Export\n\nGenerated: ${new Date().toLocaleString()}\n`;
+          const body = data.history
+            .map(h => `- **${h.role === 'bot' ? 'Assistant' : 'User'}**: ${h.content.replace(/\n/g, '  \n')}`)
+            .join('\n');
+          blob = new Blob([header + '\n' + body + '\n'], { type: 'text/markdown' });
+          triggerDownload(blob, `${filenameBase}.md`);
+        }
+      } catch (err) {
+        console.error('Export failed', err);
+        alert('Could not export conversation');
+      }
+    }
+
+    function triggerDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function importConversationFromFile(file) {
+      const userId = userIdField.value;
+      if (!userId) {
+        alert('No user selected');
+        return;
+      }
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        // Normalize messages
+        const arr = Array.isArray(json)
+          ? json
+          : (Array.isArray(json.history) ? json.history : (Array.isArray(json.messages) ? json.messages : []));
+        if (!arr.length) {
+          alert('No messages found in file');
+          return;
+        }
+        const normalized = arr
+          .map((m) => {
+            const roleRaw = (m.role || '').toLowerCase();
+            if (roleRaw === 'system') return null; // ignore system
+            const role = roleRaw === 'assistant' ? 'bot' : roleRaw; // map assistant->bot
+            const content = m.content || m.text || '';
+            if (!content) return null;
+            const timestamp = m.timestamp || null;
+            if (role !== 'user' && role !== 'bot') return null;
+            return { role, content, timestamp };
+          })
+          .filter(Boolean);
+        if (!normalized.length) {
+          alert('No importable messages in file');
+          return;
+        }
+        const res = await fetch(`${API_BASE}/users/${userId}/history/import`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: normalized }),
+        });
+        if (!res.ok) throw new Error('Import failed');
+        await loadHistory();
+        alert('Conversation imported');
+      } catch (err) {
+        console.error('Import failed', err);
+        alert('Could not import conversation');
+      }
+    }
+
+    // Push-to-talk recording logic
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+    let isProcessing = false;
+
+    const listenBtn = document.getElementById('listen-btn');
+    const recordingHint = document.getElementById('recording-hint');
+
+    function setRecordingUI(active) {
+      isRecording = !!active;
+      listenBtn.classList.toggle('recording', active);
+      recordingHint.classList.toggle('show', active);
+      listenBtn.title = active ? 'Recording… Click to stop (Shift+S)' : 'Push-to-talk (Shift+S)';
+    }
+
+    function setProcessingUI(active) {
+      isProcessing = !!active;
+      listenBtn.classList.toggle('processing', active);
+      listenBtn.disabled = active; // avoid accidental clicks while processing
+      if (active) {
+        listenBtn.title = 'Transcribing…';
+      } else if (!isRecording) {
+        listenBtn.title = 'Push-to-talk (Shift+S)';
+      }
+    }
+
+    function playBeep(freq = 880, durationSec = 0.06, volume = 0.06) {
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        gain.gain.value = volume;
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        setTimeout(() => { osc.stop(); osc.disconnect(); gain.disconnect(); }, durationSec * 1000);
+      } catch (e) {
+        // ignore beep errors
+      }
+    }
+
+    async function beginRecording() {
+      if (isRecording) return;
+      if (isProcessing) return; // wait until transcription finishes
       if (!window.OPENAI_API_KEY) {
         alert('OpenAI API key not configured');
         return;
       }
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new MediaRecorder(stream);
-        const chunks = [];
-        recorder.ondataavailable = e => chunks.push(e.data);
-        recorder.onstop = async () => {
-          const blob = new Blob(chunks, { type: 'audio/webm' });
-          const formData = new FormData();
-          formData.append('file', blob, 'speech.webm');
-          formData.append('model', 'whisper-1');
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(mediaStream);
+        mediaRecorder.ondataavailable = (e) => { if (e.data?.size) audioChunks.push(e.data); };
+        mediaRecorder.onstop = async () => {
+          // Stop all tracks to release the mic
+          try { mediaStream.getTracks().forEach(t => t.stop()); } catch (e) {}
           try {
+            const blob = new Blob(audioChunks, { type: 'audio/webm' });
+            if (blob.size === 0) { setRecordingUI(false); return; }
+            const formData = new FormData();
+            formData.append('file', blob, 'speech.webm');
+            formData.append('model', 'whisper-1');
+            setProcessingUI(true);
             const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
               method: 'POST',
               headers: { Authorization: `Bearer ${window.OPENAI_API_KEY}` },
               body: formData
             });
             const data = await res.json();
-            if (data.text) {
+            if (data?.text) {
               sendMessage(data.text);
             } else {
               console.error('Transcription error', data);
@@ -190,21 +856,149 @@
           } catch (err) {
             console.error('Transcription request failed', err);
             alert('Transcription request failed');
+          } finally {
+            setRecordingUI(false);
+            setProcessingUI(false);
+            mediaRecorder = null;
+            mediaStream = null;
+            audioChunks = [];
           }
         };
-        recorder.start();
-        setTimeout(() => recorder.stop(), 5000);
+        mediaRecorder.start();
+        setRecordingUI(true);
+        playBeep(880, 0.05, 0.05);
       } catch (err) {
         console.error('Could not access microphone', err);
         alert('Could not access microphone');
+        setRecordingUI(false);
       }
     }
 
-    document.getElementById('send-btn').onclick = () => sendMessage();
-    document.getElementById('listen-btn').onclick = () => startListening();
+    function stopRecordingAndSend() {
+      if (!isRecording) return;
+      try {
+        mediaRecorder?.stop();
+        playBeep(440, 0.05, 0.05);
+      } catch (e) {
+        console.error('Error stopping recorder', e);
+        setRecordingUI(false);
+      }
+    }
 
-    loadProfiles();
+    // Click toggles start/stop
+    function toggleRecording() {
+      if (isProcessing) return; // ignore while transcribing
+      if (isRecording) stopRecordingAndSend(); else beginRecording();
+    }
+
+    // Shift+S push-to-talk
+    const pressed = new Set();
+    let ptpActive = false;
+
+    window.addEventListener('keydown', (e) => {
+      // Track pressed keys for Shift and S
+      if (e.code === 'KeyS') pressed.add('KeyS');
+      if (e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') pressed.add('Shift');
+
+      if (!ptpActive && !isProcessing && pressed.has('Shift') && pressed.has('KeyS')) {
+        ptpActive = true;
+        beginRecording();
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'KeyS') pressed.delete('KeyS');
+      if (e.key === 'Shift' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') pressed.delete('Shift');
+
+      if (ptpActive && (!pressed.has('Shift') || !pressed.has('KeyS'))) {
+        ptpActive = false;
+        stopRecordingAndSend();
+        e.preventDefault();
+      }
+    });
+
+    // Set up speech toggle persistence and behavior
+    const speechToggleEl = document.getElementById('speech-toggle');
+    if (speechToggleEl) {
+      try {
+        const saved = localStorage.getItem('speechToggle');
+        if (saved === 'on' || saved === 'off') speechToggleEl.value = saved;
+      } catch (e) {}
+      speechToggleEl.addEventListener('change', () => {
+        try { localStorage.setItem('speechToggle', speechToggleEl.value); } catch (e) {}
+        if (speechToggleEl.value === 'off') {
+          try { synth.cancel(); } catch (e) {}
+          try {
+            if (currentTtsAudio) {
+              currentTtsAudio.pause();
+              currentTtsAudio.src = '';
+            }
+            if (currentTtsUrl) URL.revokeObjectURL(currentTtsUrl);
+          } catch (e) {}
+          currentTtsAudio = null;
+          currentTtsUrl = null;
+        }
+      });
+    }
+
+    document.getElementById('send-btn').onclick = () => sendMessage();
+    listenBtn.onclick = () => toggleRecording();
+    const exportBtn = document.getElementById('export-btn');
+    if (exportBtn) exportBtn.onclick = () => exportConversation();
+    const importBtn = document.getElementById('import-btn');
+    const importFile = document.getElementById('import-file');
+    if (importBtn && importFile) {
+      importBtn.onclick = () => importFile.click();
+      importFile.onchange = () => {
+        const file = importFile.files && importFile.files[0];
+        if (file) importConversationFromFile(file);
+        importFile.value = '';
+      };
+    }
+
+    const newConvoBtn = document.getElementById('new-convo-btn');
+    if (newConvoBtn) newConvoBtn.onclick = async () => {
+      let name = prompt('Conversation name?');
+      if (!name) {
+        const ts = new Date().toISOString().replace('T',' ').replace(/[:].*/,'');
+        name = `Conversation ${ts}`;
+      }
+      try {
+        const res = await fetch('/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        if (!res.ok) throw new Error('Create failed');
+        const data = await res.json();
+        // Open it immediately
+        selectConversation({ id: data.id, name: data.name });
+      } catch (e) {
+        alert('Could not create conversation');
+      }
+    };
+
+    loadConversations();
+    // Attempt to load ElevenLabs voices and characters; silently degrade if not configured
+    loadVoices().finally(loadCharacters);
+    
+    // Back to conversations
+    if (backBtn) backBtn.onclick = () => {
+      stopAllSpeech();
+      // Stop recording if active
+      try {
+        if (typeof isRecording !== 'undefined' && isRecording && mediaRecorder) {
+          mediaRecorder.stop();
+        }
+      } catch (e) {}
+      chatDiv.innerHTML = '';
+      userIdField.value = '';
+      profileName.textContent = '';
+      landing.style.display = 'block';
+      chatInterface.style.display = 'none';
+      loadConversations();
+    };
   </script>
 </body>
 </html>
-

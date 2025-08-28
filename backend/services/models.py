@@ -27,3 +27,13 @@ class Message(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="messages")
+
+
+class Character(Base):
+    __tablename__ = "characters"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    system_prompt = Column(Text, default="")
+    voice_id = Column(String, default="")
+    avatar = Column(String, default="")

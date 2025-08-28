@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import Any, AsyncGenerator, Dict, List
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -13,7 +13,11 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
-async def chat_with_openrouter(message: str, system_prompt: str | None = None) -> str:
+async def chat_with_openrouter(
+    message: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    messages: Optional[List[Dict[str, str]]] = None,
+) -> str:
     """Send a prompt to OpenRouter and return the response text."""
 
     if not OPENROUTER_API_KEY:
@@ -21,14 +25,18 @@ async def chat_with_openrouter(message: str, system_prompt: str | None = None) -
 
     headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
 
-    messages: List[Dict[str, str]] = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": message})
+    msg_list: List[Dict[str, str]] = []
+    if messages is not None:
+        msg_list = messages
+    else:
+        if system_prompt:
+            msg_list.append({"role": "system", "content": system_prompt})
+        if message is not None:
+            msg_list.append({"role": "user", "content": message})
 
     data: Dict[str, Any] = {
         "model": "openrouter/auto",
-        "messages": messages,
+        "messages": msg_list,
     }
 
     async with httpx.AsyncClient() as client:
@@ -39,7 +47,9 @@ async def chat_with_openrouter(message: str, system_prompt: str | None = None) -
 
 
 async def stream_chat_with_openrouter(
-    message: str, system_prompt: str | None = None
+    message: Optional[str] = None,
+    system_prompt: Optional[str] = None,
+    messages: Optional[List[Dict[str, str]]] = None,
 ) -> AsyncGenerator[str, None]:
     """Yield tokens from OpenRouter's streaming API."""
 
@@ -52,15 +62,19 @@ async def stream_chat_with_openrouter(
         "Accept": "text/event-stream",
     }
 
-    messages: List[Dict[str, str]] = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": message})
+    msg_list: List[Dict[str, str]] = []
+    if messages is not None:
+        msg_list = messages
+    else:
+        if system_prompt:
+            msg_list.append({"role": "system", "content": system_prompt})
+        if message is not None:
+            msg_list.append({"role": "user", "content": message})
 
     data: Dict[str, Any] = {
         "model": "openrouter/auto",
         "stream": True,
-        "messages": messages,
+        "messages": msg_list,
     }
 
     async with httpx.AsyncClient(timeout=None) as client:

@@ -208,3 +208,5 @@ __marimo__/
 
 # Frontend config
 frontend/config.js
+frontend/config.example.js
+local.db
