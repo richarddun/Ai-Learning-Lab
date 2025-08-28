@@ -288,17 +288,14 @@
             try { document.getElementById('chat-avatar-bg').style.backgroundImage = ''; } catch (e) {}
           }
           // Apply stored system prompt / voice / character
-          if (prefs && prefs.system_prompt) {
-            systemPrompt = prefs.system_prompt;
-          }
-          if (prefs && prefs.voice_id) {
-            window.ELEVENLABS_VOICE_ID = prefs.voice_id;
-            if (voiceSelect) voiceSelect.value = prefs.voice_id;
-          }
+          if (prefs && prefs.system_prompt) { systemPrompt = prefs.system_prompt; } else { systemPrompt = ''; }
+          if (prefs && prefs.voice_id) { window.ELEVENLABS_VOICE_ID = prefs.voice_id; if (voiceSelect) voiceSelect.value = prefs.voice_id; }
+          else { window.ELEVENLABS_VOICE_ID = ''; if (voiceSelect) voiceSelect.value = ''; }
           if (prefs && prefs.character_id) {
             window.__pendingCharacterIdForConvo = String(prefs.character_id);
           } else {
             window.__pendingCharacterIdForConvo = null;
+            if (personaSelect) personaSelect.value = '';
           }
         } catch (e) {}
         loadHistory();
@@ -611,6 +608,10 @@
         const preferred = saved || cfg;
 
         voiceSelect.innerHTML = '';
+        const defOpt = document.createElement('option');
+        defOpt.value = '';
+        defOpt.textContent = '(Default)';
+        voiceSelect.appendChild(defOpt);
         if (!data.voices || !data.voices.length) {
           const opt = document.createElement('option');
           opt.value = '';
