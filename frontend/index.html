@@ -486,7 +486,27 @@
         }
       } catch (e) {
         console.error('Avatar generation failed', e);
-        alert('Avatar generation failed');
+        let msg = 'Avatar generation failed';
+        try {
+          const raw = String(e && e.message ? e.message : e);
+          // Try to parse FastAPI {detail: ...}
+          if (raw.trim().startsWith('{')) {
+            const outer = JSON.parse(raw);
+            let body = outer.detail || raw;
+            if (typeof body === 'string' && body.trim().startsWith('{')) {
+              try { body = JSON.parse(body); } catch (_) {}
+            }
+            const text = (body && body.error && body.error.message) || body.message || String(body);
+            if (text && /content_policy_violation|safety system|rejected/i.test(text)) {
+              msg = 'Requested avatar was rejected due to content policies. Please modify your prompt and try again.';
+            } else if (text) {
+              msg = `Avatar generation failed: ${text}`;
+            }
+          } else if (/content_policy_violation|safety system|rejected/i.test(raw)) {
+            msg = 'Requested avatar was rejected due to content policies. Please modify your prompt and try again.';
+          }
+        } catch (_) {}
+        alert(msg);
       } finally {
         genAvatarBtn.disabled = false;
         genAvatarBtn.textContent = oldText;
