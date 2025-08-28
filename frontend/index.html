@@ -615,57 +615,72 @@
       currentTtsAudio = null;
       currentTtsUrl = null;
 
-      // Try ElevenLabs via backend first; fall back to browser TTS on error
+      // Try ElevenLabs via streaming endpoint first; fall back to buffered /tts, then browser TTS
       try {
         const voiceId = (window.ELEVENLABS_VOICE_ID || '').trim();
         if (!voiceId) {
           console.info('[speak] Skipping ElevenLabs: no voice configured (set window.ELEVENLABS_VOICE_ID)');
         } else {
-          console.info('[speak] Attempting ElevenLabs TTS via /tts with voice:', voiceId);
-          const res = await fetch(`${API_BASE}/tts`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, voice_id: voiceId })
-          });
-          const ct = res.headers.get('content-type') || '';
-          console.debug('[speak] /tts response', res.status, ct);
-          if (res.ok && ct.includes('audio')) {
-            const blob = await res.blob();
-            console.debug('[speak] Received ElevenLabs audio bytes:', blob.size);
-            if (blob.size > 0) {
-              // Check toggle again before playing
-              if (st && st.value === 'off') return;
-              const url = URL.createObjectURL(blob);
-              const audio = new Audio(url);
-              currentTtsAudio = audio;
-              currentTtsUrl = url;
-              audio.play().then(() => {
-                console.info('[speak] Playing ElevenLabs audio');
-                try { profileAvatar.classList.add('speaking'); } catch (e) {}
-              }).catch((err) => {
-                console.warn('[speak] Audio element play blocked, falling back to speechSynthesis', err);
-                if (!st || st.value !== 'off') {
-                  const u = new SpeechSynthesisUtterance(text);
-                  u.onstart = () => { try { profileAvatar.classList.add('speaking'); } catch (e) {} };
-                  u.onend = () => { try { profileAvatar.classList.remove('speaking'); } catch (e) {} };
-                  synth.speak(u);
-                }
+          console.info('[speak] Attempting ElevenLabs streaming via /tts/stream with voice:', voiceId);
+          // Check toggle again before playing
+          if (st && st.value === 'off') return;
+          const streamUrl = `${API_BASE}/tts/stream?voice_id=${encodeURIComponent(voiceId)}&text=${encodeURIComponent(text)}`;
+          const audio = new Audio(streamUrl);
+          currentTtsAudio = audio;
+          currentTtsUrl = null; // using URL directly, not object URL
+          audio.play().then(() => {
+            console.info('[speak] Playing ElevenLabs streaming audio');
+            try { profileAvatar.classList.add('speaking'); } catch (e) {}
+          }).catch(async (err) => {
+            console.warn('[speak] Streaming play failed, trying buffered /tts', err);
+            // Buffered fallback
+            try {
+              const res = await fetch(`${API_BASE}/tts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, voice_id: voiceId })
               });
-              // Revoke URL when done
-              audio.onended = () => {
-                if (currentTtsUrl) URL.revokeObjectURL(currentTtsUrl);
-                currentTtsUrl = null;
-                currentTtsAudio = null;
-                try { profileAvatar.classList.remove('speaking'); } catch (e) {}
-              };
-              return;
-            } else {
-              console.warn('[speak] ElevenLabs returned empty audio; falling back');
+              const ct = res.headers.get('content-type') || '';
+              if (res.ok && ct.includes('audio')) {
+                const blob = await res.blob();
+                if (blob.size > 0) {
+                  if (st && st.value === 'off') return;
+                  const url = URL.createObjectURL(blob);
+                  const a2 = new Audio(url);
+                  currentTtsAudio = a2;
+                  currentTtsUrl = url;
+                  a2.play().then(() => {
+                    console.info('[speak] Playing buffered ElevenLabs audio');
+                    try { profileAvatar.classList.add('speaking'); } catch (e) {}
+                  }).catch((err2) => {
+                    console.warn('[speak] Buffered play blocked; will fallback to speechSynthesis', err2);
+                    if (!st || st.value !== 'off') {
+                      const u = new SpeechSynthesisUtterance(text);
+                      u.onstart = () => { try { profileAvatar.classList.add('speaking'); } catch (e) {} };
+                      u.onend = () => { try { profileAvatar.classList.remove('speaking'); } catch (e) {} };
+                      synth.speak(u);
+                    }
+                  });
+                  a2.onended = () => {
+                    if (currentTtsUrl) URL.revokeObjectURL(currentTtsUrl);
+                    currentTtsUrl = null;
+                    currentTtsAudio = null;
+                    try { profileAvatar.classList.remove('speaking'); } catch (e) {}
+                  };
+                  return;
+                }
+              }
+            } catch (e2) {
+              console.warn('[speak] Buffered /tts failed', e2);
             }
-          } else {
-            const errText = !ct.includes('audio') ? (await res.text().catch(() => '')) : '';
-            console.warn('[speak] /tts did not return audio. status:', res.status, 'body:', errText);
-          }
+            // Final fallback below
+          });
+          // For streaming path, ensure we clear indicator when stream ends
+          audio.onended = () => {
+            currentTtsAudio = null;
+            try { profileAvatar.classList.remove('speaking'); } catch (e) {}
+          };
+          return;
         }
       } catch (e) {
         console.error('[speak] ElevenLabs flow threw error; falling back to speechSynthesis', e);

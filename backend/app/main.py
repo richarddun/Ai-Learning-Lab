@@ -623,6 +623,51 @@ async def tts(req: TTSRequest):
         return Response(status_code=502, content=str(e).encode("utf-8"), media_type="text/plain")
 
 
+@app.get("/tts/stream")
+async def tts_stream(
+    text: str,
+    voice_id: str,
+    stability: Optional[float] = None,
+    similarity_boost: Optional[float] = None,
+    style: Optional[float] = None,
+    use_speaker_boost: Optional[bool] = None,
+):
+    """Stream ElevenLabs MP3 chunks as they are synthesized.
+
+    Designed for low-latency playback in the browser via <audio src>.
+    """
+    import os
+    from tts.elevenlabs_client import ElevenLabsTTSClient
+
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        logger.warning("/tts/stream: ELEVENLABS_API_KEY not configured")
+        return Response(status_code=503)
+
+    def chunk_gen():
+        try:
+            client = ElevenLabsTTSClient(api_key=api_key)
+            kwargs = {}
+            if stability is not None:
+                kwargs["stability"] = stability
+            if similarity_boost is not None:
+                kwargs["similarity_boost"] = similarity_boost
+            if style is not None:
+                kwargs["style"] = style
+            if use_speaker_boost is not None:
+                kwargs["use_speaker_boost"] = use_speaker_boost
+
+            for chunk in client.stream(text, voice_id, **kwargs):
+                if chunk:
+                    yield chunk
+        except Exception as e:
+            logger.exception("/tts/stream failed: %s", e)
+            # End the stream; client will handle fallback
+            return
+
+    return StreamingResponse(chunk_gen(), media_type="audio/mpeg")
+
+
 @app.get("/tts/voices")
 async def list_voices():
     """Return available ElevenLabs voices (id + name).
