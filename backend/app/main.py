@@ -443,14 +443,61 @@ async def generate_character_avatar(char_id: int, req: AvatarGenerateRequest, db
                 raise
     except Exception as e:
         # Surface upstream error text if present
-        detail = str(e)
+        detail_text = str(e)
         if isinstance(e, httpx.HTTPStatusError):
             try:
-                detail = e.response.text
+                detail_text = e.response.text
             except Exception:
-                detail = str(e)
-        logger.exception("/characters/%s/avatar/generate failed: %s", char_id, detail)
-        raise HTTPException(status_code=502, detail=detail)
+                detail_text = str(e)
+        logger.exception("/characters/%s/avatar/generate failed: %s", char_id, detail_text)
+
+        # If it looks like a content policy violation, ask OpenRouter to suggest a softened prompt
+        suggestion = None
+        try:
+            import json as _json
+            parsed = None
+            try:
+                parsed = _json.loads(detail_text)
+            except Exception:
+                parsed = None
+            message_txt = None
+            code_txt = None
+            if isinstance(parsed, dict):
+                # OpenAI error shape: { "error": { "message": ..., "code": ... } }
+                err = parsed.get("error") if parsed else None
+                if isinstance(err, dict):
+                    message_txt = err.get("message")
+                    code_txt = err.get("code")
+            if (code_txt == "content_policy_violation") or (message_txt and ("safety system" in message_txt or "rejected" in message_txt)):
+                # Build a prompt for OpenRouter to rewrite safely
+                sys_msg = (
+                    "You rewrite image prompts to be kid-safe and G-rated. "
+                    "Preserve the creative intent, but remove weapons, violence, gore, and dangerous situations. "
+                    "Avoid adult themes. Return only a concise rewritten prompt (1-2 sentences), suitable for image generation providers."
+                )
+                user_msg = (
+                    "Original prompt (was rejected):\n" + composed_prompt + "\n\n"
+                    "Rewrite it as a friendly, colorful cartoon, kid-safe, G-rated, no violence, no weapons, simple background."
+                )
+                try:
+                    # Ask OpenRouter for a softened prompt
+                    suggestion = await chat_with_openrouter(user_msg, sys_msg)
+                except Exception as _e:  # fallback if OpenRouter unavailable
+                    suggestion = None
+        except Exception:
+            suggestion = None
+
+        # Return structured error with suggestion if available
+        raise HTTPException(
+            status_code=422 if suggestion else 502,
+            detail={
+                "error": {
+                    "code": "content_policy_violation" if suggestion else "image_generation_error",
+                    "message": detail_text,
+                },
+                **({"suggestion": suggestion} if suggestion else {}),
+            },
+        )
 
     try:
         if not img_bytes or len(img_bytes) == 0:

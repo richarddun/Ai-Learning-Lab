@@ -519,7 +519,7 @@
         let msg = 'Avatar generation failed';
         try {
           const raw = String(e && e.message ? e.message : e);
-          // Try to parse FastAPI {detail: ...}
+          // Try to parse FastAPI structured error with suggestion
           if (raw.trim().startsWith('{')) {
             const outer = JSON.parse(raw);
             let body = outer.detail || raw;
@@ -527,7 +527,12 @@
               try { body = JSON.parse(body); } catch (_) {}
             }
             const text = (body && body.error && body.error.message) || body.message || String(body);
-            if (text && /content_policy_violation|safety system|rejected/i.test(text)) {
+            const suggested = body && body.suggestion;
+            if (suggested) {
+              const promptEl = document.getElementById('char-avatar-prompt');
+              if (promptEl) promptEl.value = suggested;
+              msg = `Requested avatar was rejected due to content policies. Please modify your prompt and try again.\n\nSuggested edit:\n${suggested}`;
+            } else if (text && /content_policy_violation|safety system|rejected/i.test(text)) {
               const promptEl = document.getElementById('char-avatar-prompt');
               const current = promptEl ? promptEl.value : '';
               const softened = softenAvatarPrompt(current);
