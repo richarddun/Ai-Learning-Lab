@@ -9,11 +9,17 @@
 <body>
 
   <div id="landing">
-    <h1>Select Conversation</h1>
-    <div style="margin-bottom:0.5rem">
-      <button id="new-convo-btn">New</button>
-      <button id="settings-btn" title="Settings">⚙️</button>
+    <div id="landing-hero">
+      <div class="hero-content">
+        <h1 class="app-title">AI Learning Lab</h1>
+        <p class="tagline">Resume a conversation or start a new one.</p>
+        <div class="hero-actions">
+          <button id="new-convo-btn" class="primary">Start New</button>
+          <button id="settings-btn" title="Settings">⚙️ Settings</button>
+        </div>
+      </div>
     </div>
+    <h2 class="section-title">Your Conversations</h2>
     <div id="settings-panel" style="display:none; margin-bottom:1rem">
       <h2>API Keys</h2>
       <div id="api-keys-required" style="margin-bottom:0.5rem"></div>

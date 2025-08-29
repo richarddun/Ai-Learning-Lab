@@ -10,6 +10,50 @@ body {
   padding: 1rem;
 }
 
+/* Landing hero */
+#landing {
+  max-width: 980px;
+  margin: 0 auto;
+}
+#landing-hero {
+  background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(0,0,0,0.2));
+  border: 1px solid #555;
+  border-radius: 12px;
+  padding: 1.2rem;
+  margin-bottom: 0.75rem;
+  text-align: center;
+}
+#landing-hero .app-title {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.8rem;
+  letter-spacing: 0.5px;
+}
+#landing-hero .tagline {
+  margin: 0 0 0.6rem 0;
+  color: #d0d0d0;
+}
+#landing-hero .hero-actions {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+#landing .section-title {
+  margin: 0.5rem 0;
+  font-size: 1.1rem;
+  color: #f0f0f0;
+}
+
+/* Buttons */
+#landing .primary {
+  padding: 0.45rem 0.9rem;
+  background: #2e8b57;
+  border: 1px solid #3aa56a;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#landing .primary:hover { background: #309a60; }
+#landing #settings-btn { padding: 0.45rem 0.6rem; }
+
 #profiles button {
   display: block;
   margin: 0.5rem 0;
@@ -128,7 +172,7 @@ body {
 #sidebar textarea { padding: 0.4rem 0.5rem; }
 
 #sidebar button {
-  margin-right: 0.25rem;
+  margin-right: 2.3rem;
   margin-bottom: 0.35rem;
   padding: 0.3rem 0.6rem;
   background: #444;
@@ -136,6 +180,7 @@ body {
   border: 1px solid #666;
   border-radius: 6px;
   cursor: pointer;
+  width: 100px;
 }
 
 #sidebar button:hover {
