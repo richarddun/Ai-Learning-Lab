@@ -22,12 +22,12 @@ def test_api_key_crud(tmp_path, monkeypatch):
     assert resp.status_code == 200
 
     resp = client.get("/settings/api_keys")
-    assert resp.json() == {"keys": [{"name": "TEST_KEY", "value": "123"}]}
+    assert resp.json() == {"keys": [{"name": "TEST_KEY", "has_value": True}]}
 
     resp = client.post("/settings/api_keys", json={"name": "TEST_KEY", "value": "456"})
     assert resp.status_code == 200
     resp = client.get("/settings/api_keys")
-    assert resp.json() == {"keys": [{"name": "TEST_KEY", "value": "456"}]}
+    assert resp.json() == {"keys": [{"name": "TEST_KEY", "has_value": True}]}
 
     resp = client.delete("/settings/api_keys/TEST_KEY")
     assert resp.status_code == 200

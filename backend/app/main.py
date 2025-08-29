@@ -146,17 +146,31 @@ class ApiKeyItem(BaseModel):
 
 @app.get("/settings/api_keys")
 def list_api_keys():
+    """Return API key names without exposing values.
+
+    For backward compatibility the endpoint still lists existing keys, but
+    only returns a flag indicating a value is present. This prevents secrets
+    from being revealed to the frontend.
+    """
     if not ENV_PATH.exists():
         return {"keys": []}
     data = dotenv_values(ENV_PATH)
-    items = [{"name": k, "value": v} for k, v in data.items() if v is not None]
+    items = [
+        {"name": k, "has_value": bool(v)}
+        for k, v in data.items()
+        if v is not None
+    ]
     return {"keys": items}
 
 
 @app.post("/settings/api_keys")
 def set_api_key(item: ApiKeyItem):
+    """Create or update a key value.
+
+    Response does not echo the secret to avoid accidental exposure.
+    """
     set_key(str(ENV_PATH), item.name, item.value)
-    return {"name": item.name, "value": item.value}
+    return {"name": item.name, "updated": True}
 
 
 @app.delete("/settings/api_keys/{name}")
