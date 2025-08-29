@@ -11,6 +11,13 @@
     <h1>Select Conversation</h1>
     <div style="margin-bottom:0.5rem">
       <button id="new-convo-btn">New</button>
+      <button id="settings-btn" title="Settings">⚙️</button>
+    </div>
+    <div id="settings-panel" style="display:none; margin-bottom:1rem">
+      <h2>API Keys</h2>
+      <div id="api-keys-list"></div>
+      <button id="add-key-btn">Add Key</button>
+      <button id="close-settings-btn">Close</button>
     </div>
     <div id="conversations"></div>
   </div>
@@ -123,6 +130,11 @@
     const profileAvatar = document.getElementById('profile-avatar');
     const userIdField = document.getElementById('user-id');
     const backBtn = document.getElementById('back-btn');
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsPanel = document.getElementById('settings-panel');
+    const apiKeysList = document.getElementById('api-keys-list');
+    const addKeyBtn = document.getElementById('add-key-btn');
+    const closeSettingsBtn = document.getElementById('close-settings-btn');
 
     const synth = window.speechSynthesis;
     let audioCtx; // for UI beeps
@@ -183,6 +195,48 @@
     let systemPrompt = '';
     let userId = null;
     const API_BASE = '';
+
+    async function loadApiKeys() {
+      try {
+        const res = await fetch(`${API_BASE}/settings/api_keys`);
+        const data = await res.json();
+        apiKeysList.innerHTML = '';
+        (data.keys || []).forEach((k) => {
+          const row = document.createElement('div');
+          row.className = 'api-key-row';
+          const name = document.createElement('span');
+          name.textContent = k.name;
+          const value = document.createElement('span');
+          value.textContent = k.value;
+          const editBtn = document.createElement('button');
+          editBtn.textContent = 'Edit';
+          editBtn.onclick = async () => {
+            const nv = prompt('Value for ' + k.name, k.value);
+            if (nv === null) return;
+            await fetch(`${API_BASE}/settings/api_keys`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: k.name, value: nv })
+            });
+            loadApiKeys();
+          };
+          const delBtn = document.createElement('button');
+          delBtn.textContent = 'Delete';
+          delBtn.onclick = async () => {
+            if (!confirm('Delete ' + k.name + '?')) return;
+            await fetch(`${API_BASE}/settings/api_keys/` + encodeURIComponent(k.name), { method: 'DELETE' });
+            loadApiKeys();
+          };
+          row.appendChild(name);
+          row.appendChild(value);
+          row.appendChild(editBtn);
+          row.appendChild(delBtn);
+          apiKeysList.appendChild(row);
+        });
+      } catch (e) {
+        console.error('loadApiKeys', e);
+      }
+    }
 
     async function loadConversations() {
       try {
@@ -1108,6 +1162,26 @@
         importFile.value = '';
       };
     }
+
+    if (settingsBtn) settingsBtn.onclick = () => {
+      settingsPanel.style.display = 'block';
+      loadApiKeys();
+    };
+    if (closeSettingsBtn) closeSettingsBtn.onclick = () => {
+      settingsPanel.style.display = 'none';
+    };
+    if (addKeyBtn) addKeyBtn.onclick = async () => {
+      const name = prompt('API key name?');
+      if (!name) return;
+      const value = prompt('Value for ' + name + '?');
+      if (value === null) return;
+      await fetch(`${API_BASE}/settings/api_keys`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, value })
+      });
+      loadApiKeys();
+    };
 
     const newConvoBtn = document.getElementById('new-convo-btn');
     if (newConvoBtn) newConvoBtn.onclick = async () => {
