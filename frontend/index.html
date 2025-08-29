@@ -328,16 +328,20 @@
           const name = document.createElement('span');
           name.textContent = k.name;
           const value = document.createElement('span');
-          value.textContent = k.value;
+          // Do not reveal the stored key value in the UI
+          value.textContent = '••••••';
           const editBtn = document.createElement('button');
           editBtn.textContent = 'Edit';
           editBtn.onclick = async () => {
-            const nv = prompt('Value for ' + k.name, k.value);
-            if (nv === null) return;
+            // Ask for a new value without showing the current one.
+            const nv = prompt('Enter new value for ' + k.name + ' (leave blank to keep current):', '');
+            if (nv === null) return; // cancelled
+            const trimmed = (nv || '').trim();
+            if (!trimmed) return; // no change
             await fetch(`${API_BASE}/settings/api_keys`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: k.name, value: nv })
+              body: JSON.stringify({ name: k.name, value: trimmed })
             });
             loadApiKeys();
           };
