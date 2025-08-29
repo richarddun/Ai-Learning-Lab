@@ -51,12 +51,18 @@
           <button id="delete-character-btn">Delete</button>
         </div>
         <div id="new-character-form" style="display:none; margin-top:0.5rem">
+          <p>Character's Name:</p>
           <input id="char-name" type="text" placeholder="Name" style="width:100%; margin-bottom:0.3rem"/>
           <div style="position: relative;">
+            <p>Quick generate character behaviour:</p>
+            <button id="quick-prompt-btn" type="button" title="Prompt Wizard">Generate 🪄</button>
+            <p>Or describe your character here:</p>
             <textarea id="char-prompt" placeholder="System prompt (persona)" rows="4" style="width:100%; margin-bottom:0.3rem; padding-right:2.2rem"></textarea>
-            <button id="quick-prompt-btn" type="button" title="Prompt Wizard" class="icon-btn">🪄</button>
+            
           </div>
+          <p>Have an avatar saved locally?  Provide the path here:</p>
           <input id="char-avatar" type="text" placeholder="Avatar URL (optional)" style="width:100%; margin-bottom:0.3rem"/>
+          <p>Select character voice:</p>
           <label for="char-voice">Voice:</label>
           <select id="char-voice" style="width:100%; margin-bottom:0.25rem">
             <option value="">(use current voice)</option>
@@ -68,7 +74,7 @@
           </div>
           <input id="char-voice-manual" type="text" placeholder="Enter ElevenLabs voice_id (optional)" style="width:100%; display:none; margin-bottom:0.5rem" />
           <div style="margin-bottom:0.5rem">
-            <label for="char-avatar-prompt">Avatar Prompt (optional):</label>
+            <label for="char-avatar-prompt">Avatar Image Prompt (to generate image):</label>
             <textarea id="char-avatar-prompt" placeholder="Describe the look (kid‑safe)" rows="2" style="width:100%; margin-top:0.25rem"></textarea>
           </div>
           <div style="margin-bottom:0.5rem">

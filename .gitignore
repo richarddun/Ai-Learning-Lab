@@ -211,3 +211,4 @@ __marimo__/
 frontend/config.js
 frontend/config.example.js
 local.db
+*.png

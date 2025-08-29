@@ -125,11 +125,8 @@ body {
 
 /* Tiny icon button inside inputs/areas */
 .icon-btn {
-  position: absolute;
-  right: 6px;
-  top: 6px;
   border: 1px solid #666;
-  background: #3a3a3a;
+  background: #1f4f18;
   color: #e0e0e0;
   border-radius: 6px;
   padding: 0.2rem 0.4rem;
@@ -139,6 +136,8 @@ body {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  width: fit-content;
+  height: fit-content;
 }
 .icon-btn:hover { background: #4a4a4a; }
 
