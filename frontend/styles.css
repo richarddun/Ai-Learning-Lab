@@ -431,6 +431,13 @@ body {
 #prompt-wizard-dialog::backdrop {
   background: rgba(0,0,0,0.5);
 }
+/* Simple backdrop for other dialogs */
+#new-convo-dialog::backdrop,
+#delete-convo-dialog::backdrop,
+#delete-char-dialog::backdrop,
+#view-prompt-dialog::backdrop {
+  background: rgba(0,0,0,0.5);
+}
 #prompt-wizard-overlay {
   position: fixed;
   inset: 0;

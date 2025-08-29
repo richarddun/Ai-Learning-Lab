@@ -49,6 +49,7 @@
           <button id="new-character-btn">New</button>
           <button id="edit-character-btn">Edit</button>
           <button id="delete-character-btn">Delete</button>
+          <button id="view-prompt-btn" title="View current full system prompt">View Prompt</button>
         </div>
         <div id="new-character-form" style="display:none; margin-top:0.5rem">
           <p>Character's Name:</p>
@@ -328,6 +329,165 @@
         }
       }
     });
+
+    // --- Delete Conversation Modal ---
+    const deleteConvoDialog = document.createElement('dialog');
+    deleteConvoDialog.id = 'delete-convo-dialog';
+    deleteConvoDialog.innerHTML = `
+      <form method="dialog" id="delete-convo-form" style="min-width: min(92vw, 420px); max-width: 92vw; background:#2a2a2a; color:#e0e0e0; border:1px solid #666; border-radius:8px; padding:0.8rem;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">
+          <strong>Delete Conversation</strong>
+          <button value="cancel" title="Close" style="border:1px solid #666; background:#3a3a3a; color:#e0e0e0; border-radius:4px; padding:0.2rem 0.5rem; cursor:pointer">✖</button>
+        </div>
+        <div id="dc-message" style="margin:0.25rem 0 0.5rem 0; line-height:1.4"></div>
+        <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.8rem;">
+          <button id="dc-cancel" type="button" class="secondary" style="border:1px solid #666; background:#3a3a3a; color:#e0e0e0; border-radius:4px; padding:0.4rem 0.8rem; cursor:pointer">Cancel</button>
+          <button id="dc-confirm" type="button" style="border:1px solid #803333; background:#a33; color:#fff; border-radius:4px; padding:0.4rem 0.8rem; cursor:pointer">Delete</button>
+        </div>
+      </form>`;
+    document.body.appendChild(deleteConvoDialog);
+
+    let deleteTargetUserId = null;
+    let deleteTargetUserName = '';
+    function openDeleteConvoDialog(user) {
+      deleteTargetUserId = user && user.id;
+      deleteTargetUserName = (user && user.name) || '';
+      const msg = deleteConvoDialog.querySelector('#dc-message');
+      if (msg) {
+        const name = deleteTargetUserName ? `“${deleteTargetUserName}”` : 'this conversation';
+        msg.textContent = `Are you sure you want to delete ${name}? This cannot be undone.`;
+      }
+      if (typeof deleteConvoDialog.showModal === 'function') deleteConvoDialog.showModal();
+      else deleteConvoDialog.setAttribute('open','');
+    }
+    function closeDeleteConvoDialog() {
+      try { deleteConvoDialog.close && deleteConvoDialog.close(); } catch {}
+      deleteConvoDialog.removeAttribute('open');
+      deleteTargetUserId = null;
+      deleteTargetUserName = '';
+    }
+    async function confirmDeleteConversation() {
+      if (!deleteTargetUserId) { closeDeleteConvoDialog(); return; }
+      try {
+        const resp = await fetch(`${API_BASE}/users/${deleteTargetUserId}`, { method: 'DELETE' });
+        if (!resp.ok) throw new Error('Delete failed');
+        closeDeleteConvoDialog();
+        loadConversations();
+      } catch (e) {
+        console.error('Delete failed', e);
+        alert('Delete failed');
+      }
+    }
+    deleteConvoDialog.addEventListener('cancel', (e) => { e.preventDefault(); closeDeleteConvoDialog(); });
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'dc-cancel') { closeDeleteConvoDialog(); }
+      if (e.target && e.target.id === 'dc-confirm') { confirmDeleteConversation(); }
+    });
+
+    // --- Delete Character Modal ---
+    const deleteCharDialog = document.createElement('dialog');
+    deleteCharDialog.id = 'delete-char-dialog';
+    deleteCharDialog.innerHTML = `
+      <form method=\"dialog\" id=\"delete-char-form\" style=\"min-width: min(92vw, 420px); max-width: 92vw; background:#2a2a2a; color:#e0e0e0; border:1px solid #666; border-radius:8px; padding:0.8rem;\">
+        <div style=\"display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;\">
+          <strong>Delete Character</strong>
+          <button value=\"cancel\" title=\"Close\" style=\"border:1px solid #666; background:#3a3a3a; color:#e0e0e0; border-radius:4px; padding:0.2rem 0.5rem; cursor:pointer\">✖</button>
+        </div>
+        <div id=\"dchar-message\" style=\"margin:0.25rem 0 0.5rem 0; line-height:1.4\"></div>
+        <div style=\"display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.8rem;\">
+          <button id=\"dchar-cancel\" type=\"button\" class=\"secondary\" style=\"border:1px solid #666; background:#3a3a3a; color:#e0e0e0; border-radius:4px; padding:0.4rem 0.8rem; cursor:pointer\">Cancel</button>
+          <button id=\"dchar-confirm\" type=\"button\" style=\"border:1px solid #803333; background:#a33; color:#fff; border-radius:4px; padding:0.4rem 0.8rem; cursor:pointer\">Delete</button>
+        </div>
+      </form>`;
+    document.body.appendChild(deleteCharDialog);
+    let deleteTargetCharId = null;
+    let deleteTargetCharName = '';
+    function openDeleteCharDialog() {
+      const id = personaSelect.value;
+      if (!id) { alert('Select a character first'); return; }
+      const ch = (characters || []).find(c => String(c.id) === String(id));
+      deleteTargetCharId = id;
+      deleteTargetCharName = ch ? (ch.name || '') : '';
+      const msg = deleteCharDialog.querySelector('#dchar-message');
+      if (msg) {
+        const name = deleteTargetCharName ? `“${deleteTargetCharName}”` : 'this character';
+        msg.textContent = `Are you sure you want to delete ${name}? This cannot be undone.`;
+      }
+      if (typeof deleteCharDialog.showModal === 'function') deleteCharDialog.showModal();
+      else deleteCharDialog.setAttribute('open','');
+    }
+    function closeDeleteCharDialog() {
+      try { deleteCharDialog.close && deleteCharDialog.close(); } catch {}
+      deleteCharDialog.removeAttribute('open');
+      deleteTargetCharId = null;
+      deleteTargetCharName = '';
+    }
+    async function confirmDeleteCharacter() {
+      const id = deleteTargetCharId;
+      if (!id) { closeDeleteCharDialog(); return; }
+      try {
+        const res = await fetch(`${API_BASE}/characters/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (localStorage.getItem('selectedCharacterId') === String(id)) {
+          localStorage.removeItem('selectedCharacterId');
+        }
+        await loadCharacters();
+        personaSelect.value = '';
+        applyCharacterSelection('');
+        closeDeleteCharDialog();
+      } catch (e) {
+        console.error('Delete character failed', e);
+        alert('Could not delete character');
+      }
+    }
+    deleteCharDialog.addEventListener('cancel', (e) => { e.preventDefault(); closeDeleteCharDialog(); });
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'dchar-cancel') { closeDeleteCharDialog(); }
+      if (e.target && e.target.id === 'dchar-confirm') { confirmDeleteCharacter(); }
+    });
+
+    // --- View Prompt Modal ---
+    const viewPromptDialog = document.createElement('dialog');
+    viewPromptDialog.id = 'view-prompt-dialog';
+    viewPromptDialog.innerHTML = `
+      <form method="dialog" id="view-prompt-form" style="min-width: min(96vw, 680px); max-width: 96vw; background:#2a2a2a; color:#e0e0e0; border:1px solid #666; border-radius:8px; padding:0.8rem;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">
+          <strong>Current System Prompt</strong>
+          <button value="cancel" title="Close" style="border:1px solid #666; background:#3a3a3a; color:#e0e0e0; border-radius:4px; padding:0.2rem 0.5rem; cursor:pointer">✖</button>
+        </div>
+        <textarea id="vp-text" readonly rows="10" style="width:100%; resize:vertical; padding:0.6rem; border:1px solid #555; background:#1f1f1f; color:#e0e0e0; border-radius:6px;"></textarea>
+        <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.8rem;">
+          <button id="vp-close" type="button" class="secondary" style="border:1px solid #666; background:#3a3a3a; color:#e0e0e0; border-radius:4px; padding:0.4rem 0.8rem; cursor:pointer">Close</button>
+          <button id="vp-copy" type="button" style="border:1px solid #666; background:#4a4a4a; color:#fff; border-radius:4px; padding:0.4rem 0.8rem; cursor:pointer">Copy</button>
+        </div>
+      </form>`;
+    document.body.appendChild(viewPromptDialog);
+    function openViewPromptDialog() {
+      const ta = viewPromptDialog.querySelector('#vp-text');
+      if (ta) ta.value = buildEffectiveSystemPrompt();
+      if (typeof viewPromptDialog.showModal === 'function') viewPromptDialog.showModal();
+      else viewPromptDialog.setAttribute('open','');
+    }
+    function closeViewPromptDialog() {
+      try { viewPromptDialog.close && viewPromptDialog.close(); } catch {}
+      viewPromptDialog.removeAttribute('open');
+    }
+    async function copyViewPromptToClipboard() {
+      try {
+        const ta = viewPromptDialog.querySelector('#vp-text');
+        const text = ta ? ta.value : '';
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          ta.select(); document.execCommand('copy'); ta.blur();
+        }
+      } catch {}
+    }
+    viewPromptDialog.addEventListener('cancel', (e) => { e.preventDefault(); closeViewPromptDialog(); });
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'vp-close') { closeViewPromptDialog(); }
+      if (e.target && e.target.id === 'vp-copy') { copyViewPromptToClipboard(); }
+    });
     const landing = document.getElementById('landing');
     const chatInterface = document.getElementById('chat-interface');
     const conversationsDiv = document.getElementById('conversations');
@@ -529,12 +689,9 @@
           openBtn.onclick = () => selectConversation(u);
           const del = document.createElement('button');
           del.textContent = 'Delete';
-          del.onclick = async (e) => {
+          del.onclick = (e) => {
             e.stopPropagation();
-            if (!confirm('Delete this conversation?')) return;
-            const resp = await fetch(`${API_BASE}/users/${u.id}`, { method: 'DELETE' });
-            if (!resp.ok) { alert('Delete failed'); return; }
-            loadConversations();
+            openDeleteConvoDialog(u);
           };
           const ren = document.createElement('button');
           ren.textContent = 'Rename';
@@ -605,12 +762,30 @@
           if (prefs && prefs.system_prompt) { systemPrompt = prefs.system_prompt; } else { systemPrompt = ''; }
           if (prefs && prefs.voice_id) { window.ELEVENLABS_VOICE_ID = prefs.voice_id; }
           else { window.ELEVENLABS_VOICE_ID = ''; }
-          if (prefs && prefs.character_id) {
-            window.__pendingCharacterIdForConvo = String(prefs.character_id);
+          const pendingId = prefs && prefs.character_id ? String(prefs.character_id) : '';
+          const pendingName = prefs && prefs.character_name ? String(prefs.character_name) : '';
+          if (pendingId) {
+            window.__pendingCharacterIdForConvo = pendingId;
           } else {
             window.__pendingCharacterIdForConvo = null;
             if (personaSelect) personaSelect.value = '';
           }
+          window.__pendingCharacterNameForConvo = pendingName || '';
+          // If characters are already loaded, try to apply the character immediately
+          try {
+            if (Array.isArray(characters) && characters.length && (pendingId || pendingName)) {
+              let target = null;
+              if (pendingId) target = characters.find(c => String(c.id) === String(pendingId));
+              if (!target && pendingName) target = characters.find(c => (c.name || '') === pendingName);
+              if (target) {
+                personaSelect.value = String(target.id);
+                applyCharacterSelection(String(target.id));
+              } else {
+                // Refresh characters to ensure latest, which will also apply selection via pending values
+                loadCharacters();
+              }
+            }
+          } catch (e) {}
         } catch (e) {}
         loadHistory();
       } catch (err) {
@@ -682,12 +857,23 @@
           opt.textContent = c.name;
           personaSelect.appendChild(opt);
         }
-        // Preselect saved character
+        // Preselect saved character by id or name
         const savedId = window.__pendingCharacterIdForConvo || localStorage.getItem('selectedCharacterId');
+        const pendingName = (window.__pendingCharacterNameForConvo || '').trim();
+        let applied = false;
         if (savedId && characters.some(c => String(c.id) === String(savedId))) {
           personaSelect.value = String(savedId);
           applyCharacterSelection(String(savedId));
-        } else {
+          applied = true;
+        } else if (pendingName) {
+          const byName = characters.find(c => (c.name || '') === pendingName);
+          if (byName) {
+            personaSelect.value = String(byName.id);
+            applyCharacterSelection(String(byName.id));
+            applied = true;
+          }
+        }
+        if (!applied) {
           personaSelect.value = '';
           systemPrompt = '';
         }
@@ -708,6 +894,7 @@
     const newCharBtn = document.getElementById('new-character-btn');
     const editCharBtn = document.getElementById('edit-character-btn');
     const deleteCharBtn = document.getElementById('delete-character-btn');
+    const viewPromptBtn = document.getElementById('view-prompt-btn');
     const newCharForm = document.getElementById('new-character-form');
     const saveCharBtn = document.getElementById('save-character-btn');
     const cancelCharBtn = document.getElementById('cancel-character-btn');
@@ -788,25 +975,8 @@
       if (!id) { alert('Select a character first'); return; }
       openCharacterFormForEdit(id);
     };
-    if (deleteCharBtn) deleteCharBtn.onclick = async () => {
-      const id = personaSelect.value;
-      if (!id) { alert('Select a character first'); return; }
-      if (!confirm('Delete this character?')) return;
-      try {
-        const res = await fetch(`${API_BASE}/characters/${id}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        // Clear selection if deleting current
-        if (localStorage.getItem('selectedCharacterId') === String(id)) {
-          localStorage.removeItem('selectedCharacterId');
-        }
-        await loadCharacters();
-        personaSelect.value = '';
-        applyCharacterSelection('');
-      } catch (e) {
-        console.error('Delete character failed', e);
-        alert('Could not delete character');
-      }
-    };
+    if (deleteCharBtn) deleteCharBtn.onclick = () => openDeleteCharDialog();
+    if (viewPromptBtn) viewPromptBtn.onclick = () => openViewPromptDialog();
     if (cancelCharBtn) cancelCharBtn.onclick = () => toggleNewChar(false);
     if (saveCharBtn) saveCharBtn.onclick = async () => {
       const name = document.getElementById('char-name').value.trim();
@@ -973,11 +1143,29 @@
       }
     }
 
+    function buildEffectiveSystemPrompt() {
+      let effectiveSystemPrompt = systemPrompt || '';
+      try {
+        const selId = personaSelect && personaSelect.value;
+        if (selId) {
+          const ch = (characters || []).find(c => String(c.id) === String(selId));
+          const cname = (ch && ch.name ? String(ch.name) : '').trim();
+          if (cname) {
+            effectiveSystemPrompt = `Your name is ${cname}. ` + (effectiveSystemPrompt || '');
+          }
+        }
+      } catch (e) {}
+      return effectiveSystemPrompt;
+    }
+
     async function sendMessage(text) {
       const message = text || promptInput.value;
       if (!message) return;
       appendMessage('user', message);
       promptInput.value = '';
+
+      // Build effective system prompt including transparent additions
+      const effectiveSystemPrompt = buildEffectiveSystemPrompt();
 
       const response = await fetch(`${API_BASE}/chat/stream`, {
         method: 'POST',
@@ -985,7 +1173,7 @@
         body: JSON.stringify({
           user_id: userIdField.value,
           message,
-          system_prompt: systemPrompt
+          system_prompt: effectiveSystemPrompt
         })
       });
 
