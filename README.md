@@ -11,19 +11,22 @@ The project is structured with a Python backend and a lightweight frontend that 
 pip install -r requirements.txt
 ```
 
-2. **Configure environment**
+2. **Configure API keys**
 
-Set your OpenRouter API key so the backend can access language models. You can
-export it directly:
+Preferred: use the in‑app Settings panel (gear icon) to add API keys. Keys are stored in the local SQLite DB with reversible encryption and are not exposed to the browser.
+
+Development option: you can still read from a local `.env` if you opt in. Set `ALLOW_ENV_SECRETS=1` and place your keys in `.env`.
 
 ```bash
-export OPENROUTER_API_KEY="your_key_here"
+export ALLOW_ENV_SECRETS=1
 ```
 
-Or create a `.env` file in the project root with the following content:
+Example `.env` for development:
 
-```bash
+```
 OPENROUTER_API_KEY=your_key_here
+ELEVENLABS_API_KEY=your_key_here
+OPENAI_API_KEY=your_key_here
 ```
 
 3. **Run the web server**

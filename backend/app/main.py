@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from dotenv import dotenv_values, set_key, unset_key
+from dotenv import dotenv_values
 from backend.services.secrets import get_secret as get_db_secret, set_secret as set_db_secret, delete_secret as del_db_secret
 from backend.services.openrouter import (
     chat_with_openrouter,
@@ -154,11 +154,12 @@ def list_api_keys(db: Session = Depends(get_db)):
     from being revealed to the frontend.
     """
     names = set()
-    if ENV_PATH.exists():
-        data = dotenv_values(ENV_PATH)
-        for k, v in data.items():
-            if v is not None:
-                names.add(k)
+    if os.getenv("ALLOW_ENV_SECRETS", "0") in ("1", "true", "True"):
+        if ENV_PATH.exists():
+            data = dotenv_values(ENV_PATH)
+            for k, v in data.items():
+                if v is not None:
+                    names.add(k)
     # Include DB-backed secrets as well
     try:
         q = db.query(models.ApiSecret.name).all()
@@ -176,14 +177,9 @@ def set_api_key(item: ApiKeyItem, db: Session = Depends(get_db)):
 
     Response does not echo the secret to avoid accidental exposure.
     """
-    # Store in DB (encrypted)
+    # Store in DB (encrypted). Do not write to .env.
     try:
         set_db_secret(db, item.name, item.value)
-    except Exception:
-        pass
-    # Also persist to .env for backward compatibility
-    try:
-        set_key(str(ENV_PATH), item.name, item.value)
     except Exception:
         pass
     return {"name": item.name, "updated": True}
@@ -194,12 +190,6 @@ def delete_api_key(name: str, db: Session = Depends(get_db)):
     # Remove from DB
     try:
         del_db_secret(db, name)
-    except Exception:
-        pass
-    # Remove from .env for backward compatibility
-    try:
-        if ENV_PATH.exists():
-            unset_key(str(ENV_PATH), name)
     except Exception:
         pass
     return {"deleted": name}

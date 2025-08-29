@@ -99,8 +99,10 @@ def get_secret(db: Session, name: str) -> Optional[str]:
             return decrypt(rec.value_enc)
         except Exception:
             return None
-    # Fallback to environment for backward compatibility
-    return os.getenv(name)
+    # Fallback to environment for development only if enabled
+    if os.getenv("ALLOW_ENV_SECRETS", "0") in ("1", "true", "True"):
+        return os.getenv(name)
+    return None
 
 
 def set_secret(db: Session, name: str, value: str) -> None:
@@ -119,4 +121,3 @@ def delete_secret(db: Session, name: str) -> None:
     if rec:
         db.delete(rec)
         db.commit()
-
