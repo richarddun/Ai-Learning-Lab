@@ -4,3 +4,4 @@ httpx
 sqlalchemy
 python-dotenv
 elevenlabs
+python-multipart

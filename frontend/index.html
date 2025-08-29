@@ -16,6 +16,7 @@
     </div>
     <div id="settings-panel" style="display:none; margin-bottom:1rem">
       <h2>API Keys</h2>
+      <div id="api-keys-required" style="margin-bottom:0.5rem"></div>
       <div id="api-keys-list"></div>
       <button id="add-key-btn">Add Key</button>
       <button id="close-settings-btn">Close</button>
@@ -322,6 +323,47 @@
         const res = await fetch(`${API_BASE}/settings/api_keys`);
         const data = await res.json();
         apiKeysList.innerHTML = '';
+        const req = document.getElementById('api-keys-required');
+        if (req) {
+          const required = [
+            { name: 'OPENROUTER_API_KEY', info: 'Required for chat (LLMs via OpenRouter).'},
+            { name: 'OPENAI_API_KEY', info: 'Required for speech transcription and avatar generation.'},
+            { name: 'ELEVENLABS_API_KEY', info: 'Required for ElevenLabs TTS voices and audio.'},
+          ];
+          const present = new Set((data.keys || []).filter(k => k && k.name && k.has_value).map(k => k.name));
+          req.innerHTML = '';
+          const hdr = document.createElement('div');
+          hdr.style.marginBottom = '0.25rem';
+          hdr.textContent = 'Required keys for full functionality:';
+          req.appendChild(hdr);
+          required.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'api-key-row';
+            const name = document.createElement('span');
+            name.textContent = item.name;
+            const desc = document.createElement('span');
+            desc.textContent = item.info;
+            const btn = document.createElement('button');
+            const isSet = present.has(item.name);
+            btn.textContent = isSet ? 'Update' : 'Set';
+            btn.onclick = async () => {
+              const v = prompt(`${item.name} value:`);
+              if (v === null) return;
+              const trimmed = (v || '').trim();
+              if (!trimmed) return;
+              await fetch(`${API_BASE}/settings/api_keys`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: item.name, value: trimmed })
+              });
+              loadApiKeys();
+            };
+            row.appendChild(name);
+            row.appendChild(desc);
+            row.appendChild(btn);
+            req.appendChild(row);
+          });
+        }
         (data.keys || []).forEach((k) => {
           const row = document.createElement('div');
           row.className = 'api-key-row';
