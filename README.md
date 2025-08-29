@@ -54,3 +54,4 @@ See [TESTING.md](TESTING.md) for the full testing strategy and instructions on r
 - Add support for more model providers using openrouter list-available-models method
 - Improve the frontend with templates and more kid-friendly styling.
 - Expand voice capabilities and persistence of conversations.
+- TODO: Add a "Config" toggle in the top bar that collapses/expands the sidebar on mobile (and optionally desktop), with smooth transition and saved preference.

@@ -67,6 +67,7 @@ body {
 #container {
   display: flex;
   height: calc(100vh - 70px);
+  height: calc(100dvh - 70px); /* mobile browser bars aware */
 }
 
 #sidebar {
@@ -74,12 +75,34 @@ body {
   border-right: 1px solid #666;
   padding: 1rem;
   background: #2a2a2a;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
+
+/* Tiny icon button inside inputs/areas */
+.icon-btn {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  border: 1px solid #666;
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.icon-btn:hover { background: #4a4a4a; }
 
 #chat-area {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 /* Chat background avatar overlay */
@@ -90,26 +113,23 @@ body {
   pointer-events: none;
   background-repeat: no-repeat;
   background-position: center;
-  background-size: contain;
-  opacity: 0.08;
+  background-size: cover;
+  opacity: 0.05;
 }
 
-#voice-config {
-  margin-top: 1rem;
-}
+/* voice-config removed; voice now set in character editor */
 
-#voice-select {
-  width: 100%;
-  margin-top: 0.3rem;
-  padding: 0.3rem 0.4rem;
-  background: #3a3a3a;
-  color: #e0e0e0;
-  border: 1px solid #666;
-  border-radius: 6px;
-}
+/* Normalize spacing and full-width inputs in sidebar */
+#sidebar label { display: block; margin: 0.35rem 0 0.2rem; }
+#sidebar input[type="text"],
+#sidebar textarea,
+#sidebar select { width: 100%; box-sizing: border-box; }
+#sidebar input[type="text"],
+#sidebar textarea { padding: 0.4rem 0.5rem; }
 
 #sidebar button {
   margin-right: 0.25rem;
+  margin-bottom: 0.35rem;
   padding: 0.3rem 0.6rem;
   background: #444;
   color: #e0e0e0;
@@ -138,6 +158,9 @@ body {
   flex: 1;
   padding: 1rem;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  min-height: 0;
 }
 
 #input-area {
@@ -333,6 +356,9 @@ body {
   display: none;
   z-index: 1000;
   min-width: 300px;
+  width: min(92vw, 520px);
+  max-height: 80vh;
+  overflow: auto;
   color: #e0e0e0;
 }
 
@@ -350,4 +376,165 @@ body {
 #settings-panel .api-key-row span {
   flex: 1;
   word-break: break-all;
+}
+
+/* Prompt Wizard modal */
+#prompt-wizard-dialog {
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+#prompt-wizard-dialog::backdrop {
+  background: rgba(0,0,0,0.5);
+}
+#prompt-wizard-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+#prompt-wizard {
+  width: min(720px, 92vw);
+  max-height: 80vh;
+  overflow: auto;
+  background: #2a2a2a;
+  border: 1px solid #666;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.5);
+}
+
+#prompt-wizard .pw-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0.8rem;
+  border-bottom: 1px solid #555;
+}
+
+#prompt-wizard .pw-close {
+  border: 1px solid #666;
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+}
+#prompt-wizard .pw-close:hover { background: #4a4a4a; }
+
+#prompt-wizard .pw-body {
+  padding: 0.8rem;
+}
+
+#prompt-wizard .pw-row { margin-bottom: 0.75rem; }
+#prompt-wizard label { font-weight: 600; display: block; margin-bottom: 0.25rem; }
+#prompt-wizard .pw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.4rem 0.8rem;
+}
+#prompt-wizard .pw-grid label { font-weight: normal; }
+
+#prompt-wizard input[type="text"] {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+}
+
+#prompt-wizard .pw-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.6rem;
+}
+
+#prompt-wizard .pw-actions button {
+  padding: 0.35rem 0.7rem;
+  background: #444;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#prompt-wizard .pw-actions button:hover { background: #555; }
+#prompt-wizard .pw-actions .secondary { background: #3a3a3a; }
+
+/* Loading spinner on Generate button */
+#prompt-wizard .pw-actions #pw-generate.loading {
+  position: relative;
+}
+#prompt-wizard .pw-actions #pw-generate.loading::after {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: 8px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #ffffff;
+  animation: spin 0.8s linear infinite;
+  vertical-align: -2px;
+}
+
+#prompt-wizard .pw-error {
+  margin-top: 0.4rem;
+  color: #ff8a80;
+}
+
+/* --- Responsive adjustments for mobile/tablet --- */
+@media (max-width: 780px) {
+  #container {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100dvh - 70px);
+  }
+  #sidebar {
+    width: 100%;
+    max-height: 40vh;
+    margin-bottom: 0.5rem;
+    border-right: none;
+    border-bottom: 1px solid #666;
+  }
+  #chat-area { min-height: 60vh; }
+  #input-area {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+  #prompt {
+    width: 100%;
+    min-height: 3.2rem;
+    max-height: 30vh;
+  }
+  .export-controls {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-left: 0;
+  }
+  #sidebar button,
+  #input-area button {
+    min-height: 40px; /* better tap targets */
+  }
+}
+
+@media (max-width: 480px) {
+  #topbar img,
+  #profile-name {
+    display: none;
+  }
+  #topbar .title {
+    margin-left: 0;
+  }
+}
+
+/* On narrow screens, prefer full image without cropping */
+@media (max-width: 780px) {
+  #chat-avatar-bg { background-size: contain; opacity: 0.08; }
 }

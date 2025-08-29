@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AI Learning Lab</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -44,7 +45,10 @@
         </div>
         <div id="new-character-form" style="display:none; margin-top:0.5rem">
           <input id="char-name" type="text" placeholder="Name" style="width:100%; margin-bottom:0.3rem"/>
-          <textarea id="char-prompt" placeholder="System prompt (persona)" rows="4" style="width:100%; margin-bottom:0.3rem"></textarea>
+          <div style="position: relative;">
+            <textarea id="char-prompt" placeholder="System prompt (persona)" rows="4" style="width:100%; margin-bottom:0.3rem; padding-right:2.2rem"></textarea>
+            <button id="quick-prompt-btn" type="button" title="Prompt Wizard" class="icon-btn">🪄</button>
+          </div>
           <input id="char-avatar" type="text" placeholder="Avatar URL (optional)" style="width:100%; margin-bottom:0.3rem"/>
           <label for="char-voice">Voice:</label>
           <select id="char-voice" style="width:100%; margin-bottom:0.5rem">
@@ -82,13 +86,6 @@
             <button id="generate-avatar-btn" type="button" title="Generate avatar from prompt">Generate Avatar</button>
           </div>
         </div>
-        <div id="voice-config">
-          <label for="voice-select">Voice:</label>
-          <select id="voice-select">
-            <option value="">(loading voices…)</option>
-          </select>
-        </div>
-      </div>
       <div id="chat-area">
         <div id="chat-avatar-bg" aria-hidden="true"></div>
         <div id="chat"></div>
@@ -112,6 +109,9 @@
             <input id="import-file" type="file" accept="application/json" style="display:none" />
           </span>
         </div>
+        <!-- voice-config removed: voice now configured per character in the editor -->
+      </div>
+
       </div>
     </div>
   </div>
@@ -119,13 +119,134 @@
 
   <script src="config.js"></script>
   <script>
+    // --- Prompt Wizard (native dialog) ---
+    const wizardDialog = document.createElement('dialog');
+    wizardDialog.id = 'prompt-wizard-dialog';
+    wizardDialog.innerHTML = `
+      <form method="dialog" id="prompt-wizard" class="pw">
+        <div class="pw-header">
+          <strong>Prompt Wizard</strong>
+          <button class="pw-close" value="cancel" title="Close">✖</button>
+        </div>
+        <div class="pw-body">
+          <div class="pw-row">
+            <label>Genres:</label>
+            <div class="pw-grid">
+              ${['sci-fi','fantasy','adventure','drama','mystery','comedy','historical','educational'].map(g => `
+                <label><input type="checkbox" name="pw-genre" value="${g}"> ${g}</label>
+              `).join('')}
+            </div>
+          </div>
+          <div class="pw-row">
+            <label>Gender:</label>
+            <div class="pw-grid">
+              ${['female','male','non-binary','gender-neutral','unspecified'].map(g => `
+                <label><input type="radio" name="pw-gender" value="${g}"> ${g}</label>
+              `).join('')}
+            </div>
+          </div>
+          <div class="pw-row">
+            <label>Archetypes:</label>
+            <div class="pw-grid">
+              ${['hero','sage','mentor','trickster','guardian','rebel','healer','demon','dragon','elemental','explorer'].map(a => `
+                <label><input type="checkbox" name="pw-arch" value="${a}"> ${a}</label>
+              `).join('')}
+            </div>
+          </div>
+          <div class="pw-row">
+            <label>Personality Traits:</label>
+            <div class="pw-grid">
+              ${['curious','patient','humorous','supportive','wise','playful','stoic','optimistic','analytical','kind','adventurous'].map(t => `
+                <label><input type="checkbox" name="pw-trait" value="${t}"> ${t}</label>
+              `).join('')}
+            </div>
+          </div>
+          <div class="pw-row">
+            <label>Style Hints (optional):</label>
+            <input id="pw-style" type="text" placeholder="e.g., kid-safe, G-rated, simple language">
+          </div>
+          <div class="pw-actions">
+            <button id="pw-generate" type="button">Generate</button>
+            <button id="pw-cancel" type="button" class="secondary">Cancel</button>
+          </div>
+          <div id="pw-error" class="pw-error" role="alert"></div>
+        </div>
+      </form>`;
+    document.body.appendChild(wizardDialog);
+
+    function openPromptWizard() {
+      try { document.getElementById('pw-error').textContent = ''; } catch {}
+      if (typeof wizardDialog.showModal === 'function') {
+        wizardDialog.showModal();
+      } else {
+        wizardDialog.setAttribute('open', '');
+      }
+    }
+    function closePromptWizard() {
+      try { wizardDialog.close && wizardDialog.close(); } catch {}
+      wizardDialog.removeAttribute('open');
+    }
+
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'quick-prompt-btn') openPromptWizard();
+      if (e.target && (e.target.classList?.contains('pw-close') || e.target.id === 'pw-cancel')) closePromptWizard();
+    });
+    wizardDialog.addEventListener('cancel', (e) => { e.preventDefault(); closePromptWizard(); });
+
+    async function generatePromptFromWizard() {
+      const getValues = (name) => Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(i => i.value);
+      const genres = getValues('pw-genre');
+      const archetypes = getValues('pw-arch');
+      const traits = getValues('pw-trait');
+      const genderEl = document.querySelector('input[name="pw-gender"]:checked');
+      const gender = genderEl ? genderEl.value : 'unspecified';
+      const style = document.getElementById('pw-style').value.trim();
+
+      const payload = { genres, archetypes, traits, gender, style };
+      const btn = document.getElementById('pw-generate');
+      const err = document.getElementById('pw-error');
+      err.textContent = '';
+      btn.disabled = true;
+      const old = btn.textContent;
+      btn.textContent = 'Generating…';
+      btn.classList.add('loading');
+      try {
+        const res = await fetch(`/characters/suggest_system_prompt`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const text = (data && data.prompt) || '';
+        if (text) {
+          const ta = document.getElementById('char-prompt');
+          ta.value = text;
+          closePromptWizard();
+        } else {
+          throw new Error('Empty suggestion');
+        }
+      } catch (e) {
+        // Fallback: local template
+        const base = `You are a helpful ${gender} ${archetypes.join(', ')} guide with ${traits.join(', ')} traits, grounded in ${genres.join(', ')} themes. ${style || 'Use friendly, age-appropriate language.'}`.replace(/\s+/g,' ').trim();
+        try { document.getElementById('char-prompt').value = base; } catch {}
+        err.textContent = 'Used local template (suggestion service unavailable).';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = old;
+        btn.classList.remove('loading');
+      }
+    }
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'pw-generate') generatePromptFromWizard();
+    });
     const landing = document.getElementById('landing');
     const chatInterface = document.getElementById('chat-interface');
     const conversationsDiv = document.getElementById('conversations');
     const chatDiv = document.getElementById('chat');
     const promptInput = document.getElementById('prompt');
     const personaSelect = document.getElementById('persona-select');
-    const voiceSelect = document.getElementById('voice-select');
+    // voice-select removed; voices handled via character form and cached map
     const profileName = document.getElementById('profile-name');
     const profileAvatar = document.getElementById('profile-avatar');
     const userIdField = document.getElementById('user-id');
@@ -349,8 +470,8 @@
           }
           // Apply stored system prompt / voice / character
           if (prefs && prefs.system_prompt) { systemPrompt = prefs.system_prompt; } else { systemPrompt = ''; }
-          if (prefs && prefs.voice_id) { window.ELEVENLABS_VOICE_ID = prefs.voice_id; if (voiceSelect) voiceSelect.value = prefs.voice_id; }
-          else { window.ELEVENLABS_VOICE_ID = ''; if (voiceSelect) voiceSelect.value = ''; }
+          if (prefs && prefs.voice_id) { window.ELEVENLABS_VOICE_ID = prefs.voice_id; }
+          else { window.ELEVENLABS_VOICE_ID = ''; }
           if (prefs && prefs.character_id) {
             window.__pendingCharacterIdForConvo = String(prefs.character_id);
           } else {
@@ -378,7 +499,6 @@
       // Set voice if defined
       if (ch.voice_id) {
         window.ELEVENLABS_VOICE_ID = ch.voice_id;
-        if (voiceSelect) voiceSelect.value = ch.voice_id;
       }
       // Optional: swap avatar if provided and set chat background
       const bgEl = document.getElementById('chat-avatar-bg');
@@ -393,7 +513,7 @@
       const uid = userIdField.value;
       if (uid) {
         const voiceId = (window.ELEVENLABS_VOICE_ID || '').trim();
-        const voiceName = (voiceSelect && voiceSelect.selectedOptions && voiceSelect.selectedOptions[0] ? voiceSelect.selectedOptions[0].text : '') || '';
+        const voiceName = (window.__voiceMap && window.__voiceMap[voiceId]) ? window.__voiceMap[voiceId] : '';
         fetch(`${API_BASE}/users/${uid}/meta`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -439,17 +559,7 @@
           systemPrompt = '';
         }
         // Populate new character voice selector with same voices
-        const charVoice = document.getElementById('char-voice');
-        if (charVoice && voiceSelect && voiceSelect.options.length > 0) {
-          // Copy options
-          charVoice.innerHTML = '<option value="">(use current voice)</option>';
-          for (const opt of voiceSelect.options) {
-            if (!opt.value) continue;
-            const o = document.createElement('option');
-            o.value = opt.value; o.text = opt.text;
-            charVoice.add(o);
-          }
-        }
+        fillCharVoiceOptions();
       } catch (e) {
         console.warn('Failed to load characters', e);
         personaSelect.innerHTML = '';
@@ -473,26 +583,27 @@
     function toggleNewChar(open) {
       newCharForm.style.display = open ? 'block' : 'none';
     }
-    function populateCharVoiceOptions() {
+    function fillCharVoiceOptions() {
       const charVoice = document.getElementById('char-voice');
-      if (charVoice && voiceSelect) {
-        charVoice.innerHTML = '<option value="">(use current voice)</option>';
-        for (const opt of voiceSelect.options) {
-          if (!opt.value) continue;
-          const o = document.createElement('option');
-          o.value = opt.value; o.text = opt.text;
-          charVoice.add(o);
-        }
+      if (!charVoice) return;
+      charVoice.innerHTML = '<option value="">(use current voice)</option>';
+      const list = Array.isArray(window.__voices) ? window.__voices : [];
+      for (const v of list) {
+        const id = v.voice_id || '';
+        if (!id) continue;
+        const o = document.createElement('option');
+        o.value = id; o.text = v.name || id;
+        charVoice.add(o);
       }
     }
     function openCharacterFormForNew() {
       editingCharacterId = null;
-      populateCharVoiceOptions();
+      fillCharVoiceOptions();
       document.getElementById('char-name').value = '';
       document.getElementById('char-prompt').value = '';
       document.getElementById('char-avatar').value = '';
       const cv = document.getElementById('char-voice');
-      if (cv && voiceSelect) cv.value = voiceSelect.value || '';
+      if (cv) cv.value = (window.ELEVENLABS_VOICE_ID || '');
       document.getElementById('save-character-btn').textContent = 'Save';
       toggleNewChar(true);
     }
@@ -500,7 +611,7 @@
       const ch = characters.find(c => String(c.id) === String(id));
       if (!ch) { alert('Select a character to edit'); return; }
       editingCharacterId = ch.id;
-      populateCharVoiceOptions();
+      fillCharVoiceOptions();
       document.getElementById('char-name').value = ch.name || '';
       document.getElementById('char-prompt').value = ch.system_prompt || '';
       document.getElementById('char-avatar').value = ch.avatar || '';
@@ -668,59 +779,24 @@
         const saved = (localStorage.getItem('elevenlabsVoiceId') || '').trim();
         const cfg = (window.ELEVENLABS_VOICE_ID || '').trim();
         const preferred = saved || cfg;
-
-        voiceSelect.innerHTML = '';
-        const defOpt = document.createElement('option');
-        defOpt.value = '';
-        defOpt.textContent = '(Default)';
-        voiceSelect.appendChild(defOpt);
-        if (!data.voices || !data.voices.length) {
-          const opt = document.createElement('option');
-          opt.value = '';
-          opt.textContent = '(no voices found)';
-          voiceSelect.appendChild(opt);
-          voiceSelect.disabled = true;
-          return;
+        const list = Array.isArray(data.voices) ? data.voices : [];
+        window.__voices = list;
+        window.__voiceMap = {};
+        for (const v of list) {
+          if (v.voice_id) window.__voiceMap[v.voice_id] = v.name || v.voice_id;
         }
-        for (const v of data.voices) {
-          const opt = document.createElement('option');
-          opt.value = v.voice_id || '';
-          opt.textContent = v.name || v.voice_id || 'Unnamed';
-          voiceSelect.appendChild(opt);
+        // Default global voice
+        if (!window.ELEVENLABS_VOICE_ID) {
+          window.ELEVENLABS_VOICE_ID = preferred || (list[0] && list[0].voice_id) || '';
         }
-        if (preferred) {
-          voiceSelect.value = preferred;
-        }
-        // Set global for speak()
-        window.ELEVENLABS_VOICE_ID = voiceSelect.value;
-        voiceSelect.disabled = false;
+        // Refresh character voice select if open
+        fillCharVoiceOptions();
       } catch (e) {
         console.warn('Failed to load ElevenLabs voices (perhaps no API key?)', e);
-        voiceSelect.innerHTML = '';
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = '(ElevenLabs unavailable)';
-        voiceSelect.appendChild(opt);
-        voiceSelect.disabled = true;
+        window.__voices = [];
+        window.__voiceMap = {};
+        fillCharVoiceOptions();
       }
-    }
-
-    if (voiceSelect) {
-      voiceSelect.addEventListener('change', () => {
-        const vid = (voiceSelect.value || '').trim();
-        window.ELEVENLABS_VOICE_ID = vid;
-        try { localStorage.setItem('elevenlabsVoiceId', vid); } catch (e) {}
-        // Persist in conversation meta
-        const uid = userIdField.value;
-        if (uid) {
-          const vname = (voiceSelect.selectedOptions && voiceSelect.selectedOptions[0] ? voiceSelect.selectedOptions[0].text : '') || '';
-          fetch(`${API_BASE}/users/${uid}/meta`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ voice_id: vid, voice_name: vname })
-          }).catch(() => {});
-        }
-      });
     }
 
     async function sendMessage(text) {

@@ -106,6 +106,16 @@ class AvatarGenerateRequest(BaseModel):
     include_system_prompt: Optional[bool] = False
 
 
+class PersonaSuggestRequest(BaseModel):
+    """Inputs for suggesting a character system prompt."""
+
+    genres: List[str] = []
+    gender: Optional[str] = None
+    archetypes: List[str] = []
+    traits: List[str] = []
+    style: Optional[str] = None
+
+
 class ImportMessage(BaseModel):
     role: str
     content: str
@@ -440,7 +450,7 @@ async def generate_character_avatar(char_id: int, req: AvatarGenerateRequest, db
     # Build a safe, kid-friendly prompt
     base_style = (
         req.style
-        or "friendly colorful cartoon portrait, kid-safe, no violence, no weapons, no text, simple background"
+        or "friendly colorful cartoon portrait"
     )
     # Supported sizes for OpenAI Images: 1024x1024, 1024x1792, 1792x1024
     size = req.size or "1024x1024"
@@ -686,6 +696,49 @@ def delete_character(char_id: int, db: Session = Depends(get_db)):
     db.delete(c)
     db.commit()
     return {"deleted": True}
+
+
+@app.post("/characters/suggest_system_prompt")
+async def suggest_system_prompt(req: PersonaSuggestRequest):
+    """Use OpenRouter to suggest a concise system prompt for a persona.
+
+    Falls back to 503 if OpenRouter is not configured.
+    """
+    # Compose explicit instructions for the prompter model
+    sys_msg = (
+        "You craft concise, high-quality system prompts for AI assistant personas. "
+        "Output only the prompt text. Avoid markdown, headings, or quotation. "
+        "Keep it 5-10 sentences. G-rated, kid-safe, inclusive, and encouraging. "
+        "Describe the assistant's role, tone, and constraints. Encourage asking clarifying questions, "
+        "admitting uncertainty, and guiding step-by-step. Avoid sensitive or unsafe topics."
+    )
+    # Build user content from the selection
+    def fmt_list(items: list[str], label: str) -> str:
+        return f"{label}: " + (", ".join(i.strip() for i in items if i and str(i).strip()) or "unspecified")
+
+    parts = [
+        fmt_list(req.genres or [], "Genres"),
+        f"Gender: {(req.gender or 'unspecified')}",
+        fmt_list(req.archetypes or [], "Archetypes"),
+        fmt_list(req.traits or [], "Traits"),
+    ]
+    if req.style:
+        parts.append(f"Style: {req.style}")
+    user_msg = (
+        "Create a system prompt for an AI persona with these attributes.\n" +
+        "\n".join(parts) +
+        "\nFocus on being friendly, age-appropriate, and helpful."
+    )
+
+    try:
+        text = await chat_with_openrouter(message=user_msg, system_prompt=sys_msg)
+        if not text or "OpenRouter API key is not configured" in text:
+            # Surface as service unavailable; frontend can fallback
+            return Response(status_code=503)
+        return {"prompt": text.strip()}
+    except Exception as e:
+        logger.exception("/characters/suggest_system_prompt failed: %s", e)
+        return Response(status_code=502, content=str(e).encode("utf-8"), media_type="text/plain")
 
 
 # --- TTS (ElevenLabs) endpoint ---
