@@ -698,9 +698,12 @@
     function toggleNewChar(open) {
       newCharForm.style.display = open ? 'block' : 'none';
     }
-    function fillCharVoiceOptions() {
+    function fillCharVoiceOptions(selectedId) {
       const charVoice = document.getElementById('char-voice');
       if (!charVoice) return;
+      const current = (typeof selectedId !== 'undefined' && selectedId !== null)
+        ? String(selectedId)
+        : String(charVoice.value || '');
       charVoice.innerHTML = '<option value="">(use current voice)</option>';
       const list = Array.isArray(window.__voices) ? window.__voices : [];
       for (const v of list) {
@@ -710,10 +713,14 @@
         o.value = id; o.text = v.name || id;
         charVoice.add(o);
       }
+      // Try to restore selection
+      if (current) {
+        try { charVoice.value = current; } catch {}
+      }
     }
     function openCharacterFormForNew() {
       editingCharacterId = null;
-      fillCharVoiceOptions();
+      fillCharVoiceOptions(window.ELEVENLABS_VOICE_ID || '');
       document.getElementById('char-name').value = '';
       document.getElementById('char-prompt').value = '';
       document.getElementById('char-avatar').value = '';
@@ -726,7 +733,7 @@
       const ch = characters.find(c => String(c.id) === String(id));
       if (!ch) { alert('Select a character to edit'); return; }
       editingCharacterId = ch.id;
-      fillCharVoiceOptions();
+      fillCharVoiceOptions(ch.voice_id || '');
       document.getElementById('char-name').value = ch.name || '';
       document.getElementById('char-prompt').value = ch.system_prompt || '';
       document.getElementById('char-avatar').value = ch.avatar || '';
