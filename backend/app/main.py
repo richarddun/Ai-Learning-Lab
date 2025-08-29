@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from dotenv import dotenv_values, set_key, unset_key
 from backend.services.openrouter import (
     chat_with_openrouter,
     stream_chat_with_openrouter,
@@ -31,6 +32,7 @@ def get_db():
 
 app = FastAPI(title="AI Learning Lab")
 logger = logging.getLogger("uvicorn.error")
+ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
 class ChatRequest(BaseModel):
@@ -125,6 +127,33 @@ class UserMetaUpdate(BaseModel):
     character_id: Optional[int] = None
     character_name: Optional[str] = None
     avatar: Optional[str] = None
+
+
+class ApiKeyItem(BaseModel):
+    name: str
+    value: str
+
+
+@app.get("/settings/api_keys")
+def list_api_keys():
+    if not ENV_PATH.exists():
+        return {"keys": []}
+    data = dotenv_values(ENV_PATH)
+    items = [{"name": k, "value": v} for k, v in data.items() if v is not None]
+    return {"keys": items}
+
+
+@app.post("/settings/api_keys")
+def set_api_key(item: ApiKeyItem):
+    set_key(str(ENV_PATH), item.name, item.value)
+    return {"name": item.name, "value": item.value}
+
+
+@app.delete("/settings/api_keys/{name}")
+def delete_api_key(name: str):
+    if ENV_PATH.exists():
+        unset_key(str(ENV_PATH), name)
+    return {"deleted": name}
 
 
 @app.post("/chat")
