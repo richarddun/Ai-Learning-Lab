@@ -37,3 +37,12 @@ class Character(Base):
     system_prompt = Column(Text, default="")
     voice_id = Column(String, default="")
     avatar = Column(String, default="")
+
+
+class ApiSecret(Base):
+    __tablename__ = "api_secrets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    value_enc = Column(Text)  # base64-encoded encrypted payload
+    updated_at = Column(DateTime, default=datetime.utcnow)

@@ -1,15 +1,11 @@
 """Utility functions for interacting with the OpenRouter API."""
 
 import json
-import os
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
-from dotenv import load_dotenv
-
-
-load_dotenv()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+from backend.services.database import SessionLocal
+from backend.services.secrets import get_secret as get_db_secret
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
@@ -20,10 +16,16 @@ async def chat_with_openrouter(
 ) -> str:
     """Send a prompt to OpenRouter and return the response text."""
 
-    if not OPENROUTER_API_KEY:
+    # Resolve key at call time to support DB-backed secrets
+    db = SessionLocal()
+    try:
+        api_key = get_db_secret(db, "OPENROUTER_API_KEY")
+    finally:
+        db.close()
+    if not api_key:
         return "OpenRouter API key is not configured."
 
-    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+    headers = {"Authorization": f"Bearer {api_key}"}
 
     msg_list: List[Dict[str, str]] = []
     if messages is not None:
@@ -53,12 +55,17 @@ async def stream_chat_with_openrouter(
 ) -> AsyncGenerator[str, None]:
     """Yield tokens from OpenRouter's streaming API."""
 
-    if not OPENROUTER_API_KEY:
+    db = SessionLocal()
+    try:
+        api_key = get_db_secret(db, "OPENROUTER_API_KEY")
+    finally:
+        db.close()
+    if not api_key:
         yield "OpenRouter API key is not configured."
         return
 
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Accept": "text/event-stream",
     }
 

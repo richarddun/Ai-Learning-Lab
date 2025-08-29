@@ -11,6 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from dotenv import dotenv_values, set_key, unset_key
+from backend.services.secrets import get_secret as get_db_secret, set_secret as set_db_secret, delete_secret as del_db_secret
 from backend.services.openrouter import (
     chat_with_openrouter,
     stream_chat_with_openrouter,
@@ -145,38 +146,62 @@ class ApiKeyItem(BaseModel):
 
 
 @app.get("/settings/api_keys")
-def list_api_keys():
+def list_api_keys(db: Session = Depends(get_db)):
     """Return API key names without exposing values.
 
     For backward compatibility the endpoint still lists existing keys, but
     only returns a flag indicating a value is present. This prevents secrets
     from being revealed to the frontend.
     """
-    if not ENV_PATH.exists():
-        return {"keys": []}
-    data = dotenv_values(ENV_PATH)
-    items = [
-        {"name": k, "has_value": bool(v)}
-        for k, v in data.items()
-        if v is not None
-    ]
+    names = set()
+    if ENV_PATH.exists():
+        data = dotenv_values(ENV_PATH)
+        for k, v in data.items():
+            if v is not None:
+                names.add(k)
+    # Include DB-backed secrets as well
+    try:
+        q = db.query(models.ApiSecret.name).all()
+        for (n,) in q:
+            names.add(n)
+    except Exception:
+        pass
+    items = [{"name": n, "has_value": True} for n in sorted(names)]
     return {"keys": items}
 
 
 @app.post("/settings/api_keys")
-def set_api_key(item: ApiKeyItem):
+def set_api_key(item: ApiKeyItem, db: Session = Depends(get_db)):
     """Create or update a key value.
 
     Response does not echo the secret to avoid accidental exposure.
     """
-    set_key(str(ENV_PATH), item.name, item.value)
+    # Store in DB (encrypted)
+    try:
+        set_db_secret(db, item.name, item.value)
+    except Exception:
+        pass
+    # Also persist to .env for backward compatibility
+    try:
+        set_key(str(ENV_PATH), item.name, item.value)
+    except Exception:
+        pass
     return {"name": item.name, "updated": True}
 
 
 @app.delete("/settings/api_keys/{name}")
-def delete_api_key(name: str):
-    if ENV_PATH.exists():
-        unset_key(str(ENV_PATH), name)
+def delete_api_key(name: str, db: Session = Depends(get_db)):
+    # Remove from DB
+    try:
+        del_db_secret(db, name)
+    except Exception:
+        pass
+    # Remove from .env for backward compatibility
+    try:
+        if ENV_PATH.exists():
+            unset_key(str(ENV_PATH), name)
+    except Exception:
+        pass
     return {"deleted": name}
 
 
@@ -766,7 +791,7 @@ async def tts(req: TTSRequest):
     import os
     from tts.elevenlabs_client import ElevenLabsTTSClient
 
-    api_key = os.getenv("ELEVENLABS_API_KEY")
+    api_key = get_db_secret(db, "ELEVENLABS_API_KEY") or os.getenv("ELEVENLABS_API_KEY")
     if not api_key:
         # Not configured; let frontend fall back
         logger.warning("/tts: ELEVENLABS_API_KEY not configured; returning 503 for fallback")
@@ -823,7 +848,7 @@ async def tts_stream(
     import os
     from tts.elevenlabs_client import ElevenLabsTTSClient
 
-    api_key = os.getenv("ELEVENLABS_API_KEY")
+    api_key = get_db_secret(db, "ELEVENLABS_API_KEY") or os.getenv("ELEVENLABS_API_KEY")
     if not api_key:
         logger.warning("/tts/stream: ELEVENLABS_API_KEY not configured")
         return Response(status_code=503)
@@ -859,7 +884,7 @@ async def list_voices():
     If API key not set, return 503 so frontend can hide selector.
     """
     import os
-    api_key = os.getenv("ELEVENLABS_API_KEY")
+    api_key = get_db_secret(db, "ELEVENLABS_API_KEY") or os.getenv("ELEVENLABS_API_KEY")
     if not api_key:
         logger.warning("/tts/voices: ELEVENLABS_API_KEY not configured")
         return Response(status_code=503)
