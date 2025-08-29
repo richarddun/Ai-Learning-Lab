@@ -818,7 +818,7 @@ async def suggest_system_prompt(req: PersonaSuggestRequest):
 
 # --- TTS (ElevenLabs) endpoint ---
 @app.post("/tts")
-async def tts(req: TTSRequest):
+async def tts(req: TTSRequest, db: Session = Depends(get_db)):
     """Synthesize speech using ElevenLabs and return MP3 bytes.
 
     If ElevenLabs is not configured or errors, returns 503/502 so the frontend
@@ -876,6 +876,7 @@ async def tts_stream(
     similarity_boost: Optional[float] = None,
     style: Optional[float] = None,
     use_speaker_boost: Optional[bool] = None,
+    db: Session = Depends(get_db),
 ):
     """Stream ElevenLabs MP3 chunks as they are synthesized.
 
@@ -914,7 +915,7 @@ async def tts_stream(
 
 
 @app.get("/tts/voices")
-async def list_voices():
+async def list_voices(db: Session = Depends(get_db)):
     """Return available ElevenLabs voices (id + name).
 
     If API key not set, return 503 so frontend can hide selector.
