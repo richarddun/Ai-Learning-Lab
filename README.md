@@ -61,3 +61,4 @@ See [TESTING.md](TESTING.md) for the full testing strategy and instructions on r
 - Improve the frontend with templates and more kid-friendly styling.
 - Expand voice capabilities and persistence of conversations.
 - TODO: Add a "Config" toggle in the top bar that collapses/expands the sidebar on mobile (and optionally desktop), with smooth transition and saved preference.
+- Stretch Goal: Package as an Android app using a web wrapper (PWA + TWA or Capacitor), including icon/splash and basic offline support.

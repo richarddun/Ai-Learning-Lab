@@ -19,6 +19,9 @@ A living document to track goals, scope, decisions, testing, and milestones for 
 - [ ] Styling: theme polish, responsive layout improvements
 - [ ] Tests: minimal smoke tests for critical flows
 
+### From README TODOs
+- [ ] Top bar "Config" toggle to collapse/expand the sidebar (mobile and desktop), with smooth transition and saved preference.
+
 ## Design & Decisions
 - Dialogs use native `<dialog>` with backdrop for consistency and simplicity.
 - System prompt composition is centralised (single helper) to avoid drift.
@@ -52,6 +55,12 @@ A living document to track goals, scope, decisions, testing, and milestones for 
 - M3: Prompt UX templates and snippets
 - M4: Toast notifications + accessibility pass
 
+## Stretch Goals
+- Android app wrapper for the web UI:
+  - Option A: PWA + Trusted Web Activity (TWA) wrapper
+  - Option B: Capacitor (or Cordova) with embedded WebView
+  - Deliverables: minimal Android project, app icon, splash, offline cache (if PWA), build docs
+
 ## Open Questions
 - Which features should be behind experimental flags?
 - Any telemetry or usage metrics desired (opt‑in only)?
@@ -59,4 +68,3 @@ A living document to track goals, scope, decisions, testing, and milestones for 
 ## References
 - Branch: `fantasyland`
 - PR strategy: long‑running branch, PR later to `main`
-
