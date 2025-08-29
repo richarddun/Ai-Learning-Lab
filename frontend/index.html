@@ -867,10 +867,24 @@
       return p;
     }
 
+    function sanitizeForTTS(s) {
+      if (!s) return '';
+      let t = String(s);
+      // Remove emote/gesture text enclosed in single asterisks, e.g., *opens door slowly*
+      // Keep surrounding spacing/punctuation tidy.
+      t = t.replace(/(^|\s)\*([^*]+)\*(?=\s|$|[.,!?:;])/g, (m, pre) => pre || ' ');
+      // Collapse newlines and extra spaces
+      t = t.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+      return t;
+    }
+
     async function speak(text) {
       // Respect toggle immediately
       const st = document.getElementById('speech-toggle');
       if (st && st.value === 'off') return;
+
+      // Strip gesture-like *text* which does not read well in TTS
+      const safeText = sanitizeForTTS(text);
 
       // Stop any ongoing speech first to avoid overlap
       try { synth.cancel(); } catch (e) {}
@@ -895,7 +909,7 @@
           console.info('[speak] Attempting ElevenLabs streaming via /tts/stream with voice:', voiceId);
           // Check toggle again before playing
           if (st && st.value === 'off') return;
-          const streamUrl = `${API_BASE}/tts/stream?voice_id=${encodeURIComponent(voiceId)}&text=${encodeURIComponent(text)}`;
+          const streamUrl = `${API_BASE}/tts/stream?voice_id=${encodeURIComponent(voiceId)}&text=${encodeURIComponent(safeText)}`;
           const audio = new Audio(streamUrl);
           currentTtsAudio = audio;
           currentTtsUrl = null; // using URL directly, not object URL
@@ -909,7 +923,7 @@
               const res = await fetch(`${API_BASE}/tts`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text, voice_id: voiceId })
+                body: JSON.stringify({ text: safeText, voice_id: voiceId })
               });
               const ct = res.headers.get('content-type') || '';
               if (res.ok && ct.includes('audio')) {
@@ -926,7 +940,7 @@
                   }).catch((err2) => {
                     console.warn('[speak] Buffered play blocked; will fallback to speechSynthesis', err2);
                     if (!st || st.value !== 'off') {
-                      const u = new SpeechSynthesisUtterance(text);
+                      const u = new SpeechSynthesisUtterance(safeText);
                       u.onstart = () => { try { profileAvatar.classList.add('speaking'); } catch (e) {} };
                       u.onend = () => { try { profileAvatar.classList.remove('speaking'); } catch (e) {} };
                       synth.speak(u);
