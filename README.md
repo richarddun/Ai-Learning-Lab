@@ -55,6 +55,11 @@ This will serve the app at `https://localhost:8000` using the trusted certificat
 
 See [TESTING.md](TESTING.md) for the full testing strategy and instructions on running checks.
 
+## Documentation
+
+- Architecture overview: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Development notes and roadmap: [DEV_NOTES.md](DEV_NOTES.md)
+
 ## Next steps
 
 - Add support for more model providers using openrouter list-available-models method
