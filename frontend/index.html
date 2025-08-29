@@ -52,9 +52,15 @@
           </div>
           <input id="char-avatar" type="text" placeholder="Avatar URL (optional)" style="width:100%; margin-bottom:0.3rem"/>
           <label for="char-voice">Voice:</label>
-          <select id="char-voice" style="width:100%; margin-bottom:0.5rem">
+          <select id="char-voice" style="width:100%; margin-bottom:0.25rem">
             <option value="">(use current voice)</option>
           </select>
+          <div id="char-voice-tools" style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.5rem">
+            <button id="char-voice-reload" type="button" class="icon-btn" title="Reload available voices">⟳ Reload</button>
+            <button id="char-voice-manual-toggle" type="button" class="icon-btn" title="Enter a voice ID manually">✎ Manual ID</button>
+            <span id="char-voice-hint" style="font-size:0.9em; opacity:0.8"></span>
+          </div>
+          <input id="char-voice-manual" type="text" placeholder="Enter ElevenLabs voice_id (optional)" style="width:100%; display:none; margin-bottom:0.5rem" />
           <div style="margin-bottom:0.5rem">
             <label for="char-avatar-prompt">Avatar Prompt (optional):</label>
             <textarea id="char-avatar-prompt" placeholder="Describe the look (kid‑safe)" rows="2" style="width:100%; margin-top:0.25rem"></textarea>
@@ -694,6 +700,10 @@
     const saveCharBtn = document.getElementById('save-character-btn');
     const cancelCharBtn = document.getElementById('cancel-character-btn');
     const genAvatarBtn = document.getElementById('generate-avatar-btn');
+    const charVoiceManual = document.getElementById('char-voice-manual');
+    const charVoiceManualToggle = document.getElementById('char-voice-manual-toggle');
+    const charVoiceReload = document.getElementById('char-voice-reload');
+    const charVoiceHint = document.getElementById('char-voice-hint');
     let editingCharacterId = null;
     function toggleNewChar(open) {
       newCharForm.style.display = open ? 'block' : 'none';
@@ -717,10 +727,22 @@
       if (current) {
         try { charVoice.value = current; } catch {}
       }
+      // Toggle manual entry visibility and hint
+      if (!list.length) {
+        if (charVoiceHint) charVoiceHint.textContent = 'No voices loaded. Set ELEVENLABS_API_KEY in Settings, then Reload or enter an ID.';
+        if (charVoiceManual) charVoiceManual.style.display = 'block';
+      } else {
+        if (charVoiceHint) charVoiceHint.textContent = '';
+        if (charVoiceManual && !charVoiceManual.value) charVoiceManual.style.display = 'none';
+      }
     }
     function openCharacterFormForNew() {
       editingCharacterId = null;
       fillCharVoiceOptions(window.ELEVENLABS_VOICE_ID || '');
+      if (charVoiceManual) {
+        charVoiceManual.value = '';
+        charVoiceManual.style.display = 'none';
+      }
       document.getElementById('char-name').value = '';
       document.getElementById('char-prompt').value = '';
       document.getElementById('char-avatar').value = '';
@@ -734,6 +756,12 @@
       if (!ch) { alert('Select a character to edit'); return; }
       editingCharacterId = ch.id;
       fillCharVoiceOptions(ch.voice_id || '');
+      if (charVoiceManual) {
+        charVoiceManual.value = ch.voice_id || '';
+        // Only show manual if no voices list available
+        const list = Array.isArray(window.__voices) ? window.__voices : [];
+        charVoiceManual.style.display = list.length ? 'none' : 'block';
+      }
       document.getElementById('char-name').value = ch.name || '';
       document.getElementById('char-prompt').value = ch.system_prompt || '';
       document.getElementById('char-avatar').value = ch.avatar || '';
@@ -772,7 +800,9 @@
       const name = document.getElementById('char-name').value.trim();
       const prompt = document.getElementById('char-prompt').value;
       const avatar = document.getElementById('char-avatar').value.trim();
-      const voice = document.getElementById('char-voice').value.trim();
+      const voiceSel = document.getElementById('char-voice').value.trim();
+      const voiceMan = (charVoiceManual && charVoiceManual.style.display !== 'none' ? (charVoiceManual.value || '').trim() : '');
+      const voice = voiceMan || voiceSel;
       if (!name) { alert('Please provide a character name'); return; }
       try {
         const isEdit = !!editingCharacterId;
@@ -804,6 +834,16 @@
         console.error('Create character failed', e);
         alert('Could not save character');
       }
+    };
+
+    if (charVoiceReload) charVoiceReload.onclick = () => {
+      loadVoices();
+    };
+    if (charVoiceManualToggle) charVoiceManualToggle.onclick = () => {
+      if (!charVoiceManual) return;
+      const visible = charVoiceManual.style.display !== 'none';
+      charVoiceManual.style.display = visible ? 'none' : 'block';
+      try { if (!visible) charVoiceManual.focus(); } catch {}
     };
 
     if (genAvatarBtn) genAvatarBtn.onclick = async () => {
