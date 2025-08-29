@@ -1108,10 +1108,6 @@
     async function beginRecording() {
       if (isRecording) return;
       if (isProcessing) return; // wait until transcription finishes
-      if (!window.OPENAI_API_KEY) {
-        alert('OpenAI API key not configured');
-        return;
-      }
       try {
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioChunks = [];
@@ -1127,9 +1123,8 @@
             formData.append('file', blob, 'speech.webm');
             formData.append('model', 'whisper-1');
             setProcessingUI(true);
-            const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+            const res = await fetch(`${API_BASE}/speech/transcribe`, {
               method: 'POST',
-              headers: { Authorization: `Bearer ${window.OPENAI_API_KEY}` },
               body: formData
             });
             const data = await res.json();

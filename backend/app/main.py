@@ -1,6 +1,6 @@
 from typing import List, Optional
 from datetime import datetime, timezone
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, Response
 import logging
 import random
@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+import httpx
 from dotenv import dotenv_values
 from backend.services.secrets import get_secret as get_db_secret, set_secret as set_db_secret, delete_secret as del_db_secret
 from backend.services.openrouter import (
@@ -193,6 +194,51 @@ def delete_api_key(name: str, db: Session = Depends(get_db)):
     except Exception:
         pass
     return {"deleted": name}
+
+
+@app.post("/speech/transcribe")
+async def transcribe_speech(
+    file: UploadFile = File(...),
+    model: str = Form("whisper-1"),
+    db: Session = Depends(get_db),
+):
+    """Proxy audio transcription to OpenAI using a server-side API key.
+
+    Expects multipart/form-data with fields:
+      - file: audio blob
+      - model: optional, defaults to "whisper-1"
+    Returns JSON: {"text": "..."}
+    """
+    api_key = get_db_secret(db, "OPENAI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="OpenAI API key is not configured.")
+
+    try:
+        audio_bytes = await file.read()
+        files = {
+            "file": (file.filename or "audio.webm", audio_bytes, file.content_type or "audio/webm"),
+            "model": (None, model),
+        }
+        headers = {"Authorization": f"Bearer {api_key}"}
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/audio/transcriptions",
+                headers=headers,
+                files=files,
+            )
+        if resp.status_code >= 400:
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = {"status": resp.status_code, "text": resp.text}
+            raise HTTPException(status_code=resp.status_code, detail=detail)
+        data = resp.json()
+        return {"text": data.get("text", "")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Transcription failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/chat")
@@ -472,7 +518,7 @@ async def generate_character_avatar(char_id: int, req: AvatarGenerateRequest, db
     if not c:
         raise HTTPException(status_code=404, detail="Character not found")
 
-    openai_key = os.getenv("OPENAI_API_KEY")
+    openai_key = get_db_secret(db, "OPENAI_API_KEY")
     if not openai_key:
         raise HTTPException(status_code=503, detail="Image provider not configured")
 

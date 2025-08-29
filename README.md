@@ -37,6 +37,9 @@ uvicorn backend.app.main:app --reload
 
 Visit `http://localhost:8000/` to access the frontend served by the backend. The page can call the API endpoints directly without any cross-origin configuration.
 
+Notes
+- Speech transcription is proxied through the backend at `/speech/transcribe`; configure `OPENAI_API_KEY` via the Settings UI (or `.env` only if `ALLOW_ENV_SECRETS=1`).
+
 ### Optional: HTTPS for Voice Streaming
 
 Some browsers require HTTPS for microphone access. A local Certificate Authority is bundled in `certs/ca.cert.pem`.
