@@ -241,6 +241,75 @@
     document.addEventListener('click', (e) => {
       if (e.target && e.target.id === 'pw-generate') generatePromptFromWizard();
     });
+
+    // --- New Conversation Modal ---
+    const newConvoDialog = document.createElement('dialog');
+    newConvoDialog.id = 'new-convo-dialog';
+    newConvoDialog.innerHTML = `
+      <form method="dialog" id="new-convo-form" style="min-width: min(92vw, 420px); max-width: 92vw; background:#2a2a2a; color:#e0e0e0; border:1px solid #666; border-radius:8px; padding:0.8rem;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">
+          <strong>New Conversation</strong>
+          <button value="cancel" title="Close" style="border:1px solid #666; background:#3a3a3a; color:#e0e0e0; border-radius:4px; padding:0.2rem 0.5rem; cursor:pointer">✖</button>
+        </div>
+        <label for="new-convo-name" style="display:block; margin: 0.25rem 0;">Name</label>
+        <input id="new-convo-name" type="text" placeholder="e.g., Conversation 2025-08-29 12:00" style="width:100%; padding:0.5rem; border:1px solid #555; background:#1f1f1f; color:#e0e0e0; border-radius:4px;" />
+        <div style="display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.8rem;">
+          <button id="nc-cancel" type="button" class="secondary" style="border:1px solid #666; background:#3a3a3a; color:#e0e0e0; border-radius:4px; padding:0.4rem 0.8rem; cursor:pointer">Cancel</button>
+          <button id="nc-create" type="button" style="border:1px solid #666; background:#4a4a4a; color:#fff; border-radius:4px; padding:0.4rem 0.8rem; cursor:pointer">Create</button>
+        </div>
+      </form>`;
+    document.body.appendChild(newConvoDialog);
+
+    function openNewConvoDialog() {
+      try {
+        const input = newConvoDialog.querySelector('#new-convo-name');
+        if (input) input.value = '';
+      } catch {}
+      if (typeof newConvoDialog.showModal === 'function') newConvoDialog.showModal();
+      else newConvoDialog.setAttribute('open','');
+      try { newConvoDialog.querySelector('#new-convo-name')?.focus(); } catch {}
+    }
+    function closeNewConvoDialog() {
+      try { newConvoDialog.close && newConvoDialog.close(); } catch {}
+      newConvoDialog.removeAttribute('open');
+    }
+    async function submitNewConversation() {
+      let name = '';
+      try { name = (newConvoDialog.querySelector('#new-convo-name').value || '').trim(); } catch {}
+      if (!name) {
+        const ts = new Date().toISOString().replace('T',' ').replace(/[:].*/, '');
+        name = `Conversation ${ts}`;
+      }
+      try {
+        const res = await fetch('/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        if (!res.ok) throw new Error('Create failed');
+        const data = await res.json();
+        closeNewConvoDialog();
+        // Open it immediately
+        selectConversation({ id: data.id, name: data.name });
+      } catch (e) {
+        // Keep modal open but provide subtle feedback
+        console.error('Could not create conversation', e);
+      }
+    }
+    newConvoDialog.addEventListener('cancel', (e) => { e.preventDefault(); closeNewConvoDialog(); });
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'nc-cancel') { closeNewConvoDialog(); }
+      if (e.target && e.target.id === 'nc-create') { submitNewConversation(); }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (newConvoDialog.hasAttribute('open') && e.key === 'Enter') {
+        const active = document.activeElement;
+        if (active && active.id === 'new-convo-name') {
+          e.preventDefault();
+          submitNewConversation();
+        }
+      }
+    });
     const landing = document.getElementById('landing');
     const chatInterface = document.getElementById('chat-interface');
     const conversationsDiv = document.getElementById('conversations');
@@ -1315,26 +1384,7 @@
     };
 
     const newConvoBtn = document.getElementById('new-convo-btn');
-    if (newConvoBtn) newConvoBtn.onclick = async () => {
-      let name = prompt('Conversation name?');
-      if (!name) {
-        const ts = new Date().toISOString().replace('T',' ').replace(/[:].*/,'');
-        name = `Conversation ${ts}`;
-      }
-      try {
-        const res = await fetch('/users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name })
-        });
-        if (!res.ok) throw new Error('Create failed');
-        const data = await res.json();
-        // Open it immediately
-        selectConversation({ id: data.id, name: data.name });
-      } catch (e) {
-        alert('Could not create conversation');
-      }
-    };
+    if (newConvoBtn) newConvoBtn.onclick = () => openNewConvoDialog();
 
     loadConversations();
     // Attempt to load ElevenLabs voices and characters; silently degrade if not configured
