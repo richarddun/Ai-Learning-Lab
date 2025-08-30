@@ -54,6 +54,18 @@ body {
 #landing .primary:hover { background: #309a60; }
 #landing #settings-btn { padding: 0.45rem 0.6rem; }
 
+/* Secondary action link styled like a button */
+#landing a.secondary {
+  display: inline-block;
+  padding: 0.45rem 0.6rem;
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+  text-decoration: none;
+}
+#landing a.secondary:hover { background: #4a4a4a; }
+
 #profiles button {
   display: block;
   margin: 0.5rem 0;

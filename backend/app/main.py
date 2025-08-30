@@ -1,7 +1,7 @@
 from typing import List, Optional
 from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, HTMLResponse, FileResponse
 import logging
 import random
 import os
@@ -990,5 +990,310 @@ def import_history(user_id: int, req: ImportRequest, db: Session = Depends(get_d
 
 
 # Serve the frontend directory as static files at the root.
+# ----------------- Piper TTS + Admin (streaming WAV with FX) -----------------
+# We register these at the end to avoid import issues when optional deps are missing.
+
+def _wav_header(sample_rate: int, channels: int = 1, sampwidth: int = 2) -> bytes:
+    import io, wave
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(channels)
+        w.setsampwidth(sampwidth)
+        w.setframerate(sample_rate)
+        w.writeframes(b"")
+    return buf.getvalue()
+
+
+@app.post("/tts/stream")
+def piper_tts_stream(
+    text: str = Form(...),
+    voice_id: str = Form(...),
+    preset: str = Form("wizard"),
+    # Accept strings so blank values don't cause 422; we'll parse safely.
+    speaker_id: Optional[str] = Form(None),
+    length_scale: Optional[str] = Form("0.96"),
+    noise_scale: Optional[str] = Form("0.60"),
+    noise_w: Optional[str] = Form("0.8"),
+    fx_overrides: Optional[str] = Form(None),
+):
+    """Stream WAV audio synthesized by Piper and processed with pedalboard FX.
+
+    This POST route accepts form-data and returns audio/wav suitable for <audio> playback.
+    It coexists with the existing GET /tts/stream (ElevenLabs MP3).
+    """
+    try:
+        from backend.piper_utils.character_fx import (
+            build_board,
+            apply_fx_block,
+            pcm16_to_float32,
+            float32_to_pcm16,
+        )
+        from backend.piper_utils.voice_manager import (
+            get_voice,
+            ensure_voice_local,
+            read_sample_rate_from_sidecar,
+        )
+        # Piper 1 API (import lazily to avoid failing app startup when missing)
+        from piper.voice import SynthesisConfig
+    except Exception as e:
+        # Optional deps missing; surface a 503 so clients can fallback
+        raise HTTPException(status_code=503, detail=f"Piper/FX not available: {e}")
+
+    import json as _json
+    # Load voice and sample rate
+    voice = get_voice(voice_id)
+    sr = read_sample_rate_from_sidecar(ensure_voice_local(voice_id))
+
+    # Build FX board for this request
+    over = _json.loads(fx_overrides) if fx_overrides else {}
+    board = build_board(preset, over)
+
+    # Safe parsing helpers for optional fields
+    def _to_int_or_none(v: Optional[str]) -> Optional[int]:
+        if v is None:
+            return None
+        s = str(v).strip()
+        if not s:
+            return None
+        try:
+            return int(s)
+        except Exception:
+            return None
+
+    def _to_float(v: Optional[str], default: float) -> float:
+        if v is None:
+            return default
+        s = str(v).strip()
+        if not s:
+            return default
+        try:
+            return float(s)
+        except Exception:
+            return default
+
+    cfg = SynthesisConfig(
+        text=text,
+        speaker_id=_to_int_or_none(speaker_id),
+        length_scale=_to_float(length_scale, 0.96),
+        noise_scale=_to_float(noise_scale, 0.60),
+        noise_w=_to_float(noise_w, 0.8),
+    )
+
+    def gen():
+        # Header first for streaming WAV
+        yield _wav_header(sr)
+        last_block = None
+        for chunk in voice.synthesize(cfg):
+            f32 = pcm16_to_float32(chunk.audio)
+            last_block = f32
+            f32_fx = apply_fx_block(board, f32, sr)
+            yield float32_to_pcm16(f32_fx)
+        # Flush FX tail if any
+        if last_block is not None:
+            tail = apply_fx_block(board, last_block * 0, sr)
+            yield float32_to_pcm16(tail)
+
+    return StreamingResponse(gen(), media_type="audio/wav")
+
+
+_ADMIN_HTML = """<!doctype html>
+<html>
+<head>
+<meta charset=\"utf-8\" />
+<title>Voice Admin</title>
+<style>body{font-family:system-ui;margin:2rem;max-width:840px}label{display:block;margin-top:.75rem}input,select,textarea{width:100%;padding:.4rem}button{margin-top:1rem;padding:.5rem 1rem}</style>
+<body>
+<h1>Voice Admin</h1>
+<section>
+  <h2>1) Download a Piper voice</h2>
+  <p>Paste a <code>voice_id</code> from <a target=\"_blank\" href=\"https://huggingface.co/rhasspy/piper-voices\">rhasspy/piper-voices</a> (e.g., <code>en_GB-kathleen-high</code>) and click download.</p>
+  <form id=\"dlForm\"><label>Voice ID <input name=\"voice_id\" placeholder=\"en_GB-kathleen-high\" required /></label><button type=\"submit\">Download</button></form>
+  <pre id=\"dlOut\"></pre>
+  <details><summary>Local voices dir</summary><code>/voices</code> (repo root)</details>
+  <hr />
+</section>
+<section>
+  <h2>2) Trial synthesis (TTS → FX → stream)</h2>
+  <form id=\"trialForm\">
+    <label>Voice ID or local .onnx path <input name=\"voice_id\" placeholder=\"en_GB-kathleen-high or ./voices/en_GB-kathleen-high.onnx\" required /></label>
+    <label>Preset <select name=\"preset\"><option>wizard</option><option>robot</option><option>fairy</option><option>goblin</option><option>none</option></select></label>
+    <details><summary>Advanced (Piper + FX params)</summary>
+      <label>speaker_id (int, optional) <input name=\"speaker_id\" /></label>
+      <label>length_scale (e.g., 0.96) <input name=\"length_scale\" value=\"0.96\" /></label>
+      <label>noise_scale (e.g., 0.6) <input name=\"noise_scale\" value=\"0.6\" /></label>
+      <label>noise_w (e.g., 0.8) <input name=\"noise_w\" value=\"0.8\" /></label>
+      <label>FX overrides (JSON) <input name=\"fx_overrides\" placeholder='{"pitch_semitones":-3,"wet":0.3}' /></label>
+    </details>
+    <label>Text to speak <textarea name=\"text\" rows=\"3\">Welcome back to the AI Learning Lab!</textarea></label>
+    <button type=\"submit\">Stream Trial</button>
+  </form>
+  <audio id=\"player\" controls></audio>
+  <pre id=\"trialOut\"></pre>
+</section>
+<script>
+const q = s => document.querySelector(s);
+q('#dlForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const r = await fetch('/admin/download', { method: 'POST', body: fd });
+  q('#dlOut').textContent = await r.text();
+});
+q('#trialForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const r = await fetch('/tts/stream', { method: 'POST', body: fd });
+  if (!r.ok) {
+    const msg = await r.text();
+    q('#trialOut').textContent = `Error: ${r.status} ${r.statusText}\n${msg}`;
+    return;
+  }
+  q('#trialOut').textContent = '';
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+  const audio = q('#player');
+  audio.src = url; audio.play();
+});
+</script>
+</body></html>"""
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_page():
+    return HTMLResponse(_ADMIN_HTML)
+
+
+@app.post("/admin/download")
+def admin_download(voice_id: str = Form(...)):
+    try:
+        from backend.piper_utils.voice_manager import ensure_voice_local, VOICES_DIR
+        onnx_path = ensure_voice_local(voice_id)
+        return Response(
+            f"Downloaded/verified: {onnx_path}\nSidecar: {onnx_path}.json\nStored in {VOICES_DIR}\n",
+            media_type="text/plain",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# --- Avatar Gallery (browse + download) ---
+@app.get("/avatar-gallery", response_class=HTMLResponse)
+def avatar_gallery():
+    """Render a simple gallery page of generated avatars under frontend/assets/characters.
+
+    Provides inline preview and a download link that forces attachment.
+    """
+    root = Path(__file__).resolve().parent.parent.parent
+    assets_root = root / "frontend" / "assets"
+    chars_dir = assets_root / "characters"
+
+    items: list[dict] = []
+    try:
+        if chars_dir.exists():
+            for char_dir in sorted(chars_dir.iterdir()):
+                if not char_dir.is_dir():
+                    continue
+                char_id = char_dir.name
+                for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+                    for f in char_dir.glob(ext):
+                        try:
+                            stat = f.stat()
+                            mtime = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+                        except Exception:
+                            mtime = None
+                        rel_under_assets = f.relative_to(assets_root).as_posix()
+                        items.append(
+                            {
+                                "char_id": char_id,
+                                "rel": rel_under_assets,
+                                "url": "/assets/" + rel_under_assets,
+                                "name": f.name,
+                                "mtime": mtime.isoformat() if mtime else "",
+                                "epoch": stat.st_mtime if 'stat' in locals() else 0,
+                            }
+                        )
+        # Most recent first
+        items.sort(key=lambda d: d.get("epoch", 0), reverse=True)
+    except Exception as e:
+        logger.exception("/avatar-gallery listing failed: %s", e)
+        items = []
+
+    def esc(s: str) -> str:
+        return (
+            s.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+        )
+
+    cards = []
+    for it in items:
+        cards.append(
+            (
+                f"<figure class=\"card\">"
+                f"  <img loading=\"lazy\" src=\"{esc(it['url'])}\" alt=\"avatar\">"
+                f"  <figcaption>Char #{esc(str(it['char_id']))}<br><small>{esc(it['name'])}</small></figcaption>"
+                f"  <a class=\"dl\" href=\"/avatar-gallery/download?f={esc(it['rel'])}\">Download</a>"
+                f"</figure>"
+            )
+        )
+
+    html = (
+        "<!doctype html>\n"
+        "<html><head><meta charset=\"utf-8\">"
+        "<title>Avatar Gallery</title>"
+        "<style>"
+        "body{font-family:system-ui;margin:1.5rem;}"
+        "h1{margin:0 0 1rem 0;}"
+        ".wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;}"
+        ".card{border:1px solid #ddd;border-radius:8px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);background:#fff;}"
+        ".card img{width:100%;height:180px;object-fit:cover;border-radius:6px;}"
+        ".card figcaption{margin:.4rem 0 .6rem 0;font-size:.9rem;color:#333}"
+        ".dl{display:inline-block;padding:.35rem .6rem;border:1px solid #888;border-radius:6px;text-decoration:none;color:#222;background:#f7f7f7}"
+        ".dl:hover{background:#efefef}"
+        "</style></head><body>"
+        "<h1>Avatar Gallery</h1>"
+        f"<p>Total: {len(items)}</p>"
+        "<div class=\"wrap\">"
+        + ("".join(cards) if cards else "<p>No avatars found yet.</p>")
+        + "</div>"
+        "</body></html>"
+    )
+    return HTMLResponse(html)
+
+
+@app.get("/avatar-gallery/download")
+def avatar_gallery_download(f: str):
+    """Force download of an avatar located under frontend/assets.
+
+    The `f` parameter is a POSIX-style relative path under `assets/` such as
+    `characters/12/avatar-1693414312.png`. Path traversal is rejected.
+    """
+    root = Path(__file__).resolve().parent.parent.parent
+    assets_root = (root / "frontend" / "assets").resolve()
+
+    # Basic sanitation: reject absolute paths and parent refs
+    rel = Path(f)
+    if rel.is_absolute() or any(p == ".." for p in rel.parts):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    file_path = (assets_root / rel).resolve()
+    try:
+        file_path.relative_to(assets_root)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid path scope")
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    import mimetypes
+    media_type, _ = mimetypes.guess_type(str(file_path))
+    media_type = media_type or "application/octet-stream"
+    # Force download via Content-Disposition
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=file_path.name,
+    )
+
+# Mount the frontend static files last to avoid shadowing specific routes like /admin
 frontend_dir = Path(__file__).resolve().parent.parent.parent / "frontend"
 app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
