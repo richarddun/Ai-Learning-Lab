@@ -570,6 +570,14 @@
     // This way all fetches remain relative to the correct app context without hardcoding.
     // The regex /\/$/ trims a trailing slash for consistency.
     const API_BASE = window.location.pathname.replace(/\/$/, "");
+ 
+    function resolveUrl(u) {
+     if (!u) return u;
+     if (/^https?:\/\//i.test(u)) return u;       // already absolute
+     if (u.startsWith(API_BASE + '/')) return u;  // already prefixed
+     if (u.startsWith('/')) return API_BASE + u;  // '/assets/...' -> '/lab/assets/...'
+     return API_BASE + '/' + u.replace(/^\.?\//, '');
+   }
 
     async function loadApiKeys() {
       try {

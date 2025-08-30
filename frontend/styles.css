@@ -478,6 +478,7 @@ body {
 
 #prompt-wizard .pw-body {
   padding: 0.8rem;
+  background-color: #ac5aaec2;
 }
 
 #prompt-wizard .pw-row { margin-bottom: 0.75rem; }

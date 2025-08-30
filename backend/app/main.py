@@ -550,11 +550,11 @@ async def generate_character_avatar(char_id: int, req: AvatarGenerateRequest, db
 
     async def fetch_image_bytes(model: str) -> bytes:
         body = {
-            "model": model,
+            "model": "dall-e-3",
             "prompt": composed_prompt,
             "size": size,
-            "n": 1,
-            "response_format": "b64_json",
+            "n": 1
+            #"response_format": "b64_json",
         }
         if req.seed is not None:
             # Some models may ignore/deny seed; harmless to include
