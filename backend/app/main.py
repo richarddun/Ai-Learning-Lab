@@ -1071,18 +1071,43 @@ def piper_tts_stream(
         except Exception:
             return default
 
-    cfg = SynthesisConfig(
-        speaker_id=_to_int_or_none(speaker_id),
-        length_scale=_to_float(length_scale, 0.96),
-        noise_scale=_to_float(noise_scale, 0.60),
-        noise_w=_to_float(noise_w, 0.8),
-    )
+    # Build SynthesisConfig with compatibility across piper-tts versions
+    _cfg_values = {
+        "speaker_id": _to_int_or_none(speaker_id),
+        "length_scale": _to_float(length_scale, 0.96),
+        "noise_scale": _to_float(noise_scale, 0.60),
+        "noise_w": _to_float(noise_w, 0.8),
+    }
+    # Filter unsupported args and alias where needed
+    try:
+        from inspect import signature
+        _params = set(signature(SynthesisConfig).parameters.keys())
+    except Exception:
+        _params = {"speaker_id", "length_scale", "noise_scale", "noise_w", "noise_scale_w", "speaker"}
+
+    _cfg_kwargs = {}
+    for k, v in _cfg_values.items():
+        if v is None:
+            continue
+        if k in _params:
+            _cfg_kwargs[k] = v
+        elif k == "noise_w" and "noise_scale_w" in _params:
+            _cfg_kwargs["noise_scale_w"] = v
+        elif k == "speaker_id" and "speaker" in _params:
+            _cfg_kwargs["speaker"] = v
+
+    cfg = SynthesisConfig(**_cfg_kwargs)
 
     def gen():
         # Header first for streaming WAV
         yield _wav_header(sr)
         last_block = None
-        for chunk in voice.synthesize(text, cfg):
+        # piper-tts APIs differ on argument order; try text-first, then config-first
+        try:
+            iterator = voice.synthesize(text, cfg)
+        except TypeError:
+            iterator = voice.synthesize(cfg, text)
+        for chunk in iterator:
             f32 = pcm16_to_float32(chunk.audio)
             last_block = f32
             f32_fx = apply_fx_block(board, f32, sr)
