@@ -681,11 +681,25 @@
         users.forEach((u) => {
           let prefs = {};
           try { prefs = u.preferences ? JSON.parse(u.preferences) : {}; } catch (e) {}
+          // Borrow avatar from referenced character if prefs.avatar is empty
+          let avatarUrl = (prefs.avatar || '');
+          if (!avatarUrl && (prefs.character_id || prefs.character_name)) {
+            try {
+              const id = String(prefs.character_id || '');
+              const name = (prefs.character_name || '').trim();
+              let ch = null;
+              if (Array.isArray(window.characters) && window.characters.length) {
+                ch = id ? window.characters.find(c => String(c.id) === id)
+                        : window.characters.find(c => (c.name || '') === name);
+              }
+              if (ch && ch.avatar) avatarUrl = ch.avatar;
+            } catch (e) {}
+          }
           const row = document.createElement('div');
           row.className = 'convo-row';
           const thumb = document.createElement('img');
           thumb.className = 'convo-thumb';
-          if (prefs.avatar) thumb.src = prefs.avatar; else thumb.alt = 'avatar';
+          if (avatarUrl) thumb.src = avatarUrl; else thumb.alt = 'avatar';
           const info = document.createElement('div');
           info.className = 'convo-info';
           const title = document.createElement('div');
@@ -811,6 +825,7 @@
 
     // Characters (Personas) handling
     let characters = [];
+    try { window.characters = characters; } catch (e) {}
     function applyCharacterSelection(id) {
       const ch = characters.find(c => String(c.id) === String(id));
       if (!ch) {
@@ -860,6 +875,7 @@
         if (!res.ok) throw new Error(`characters http ${res.status}`);
         const data = await res.json();
         characters = data.characters || [];
+        try { window.characters = characters; } catch (e) {}
         personaSelect.innerHTML = '';
         const def = document.createElement('option');
         def.value = '';
