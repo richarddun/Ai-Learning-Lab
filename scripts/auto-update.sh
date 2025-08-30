@@ -47,8 +47,8 @@ git pull --ff-only origin "$BRANCH"
 
 # Optional: if requirements changed, try to install deps (best-effort)
 if git diff --name-only "$local..HEAD" | grep -qE '(^|/)requirements\.txt$'; then
-  if [ -f ./venv/bin/pip ]; then
-    ./venv/bin/pip install -r requirements.txt || true
+  if [ -f /home/richard/servers/Ai-Learning-Lab/env/bin/pip ]; then
+    /home/richard/servers/Ai-Learning-Lab/venv/bin/pip install -r requirements.txt || true
   elif command -v pip3 >/dev/null 2>&1; then
     pip3 install -r requirements.txt || true
   fi
