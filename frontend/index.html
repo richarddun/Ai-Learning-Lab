@@ -231,7 +231,7 @@
       btn.textContent = 'Generating…';
       btn.classList.add('loading');
       try {
-        const res = await fetch(`/characters/suggest_system_prompt`, {
+        const res = await fetch(`${API_BASE}/characters/suggest_system_prompt`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -300,7 +300,7 @@
         name = `Conversation ${ts}`;
       }
       try {
-        const res = await fetch('/users', {
+	  const res = await fetch(`${API_BASE}/users`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name })
@@ -563,7 +563,13 @@
 
     let systemPrompt = '';
     let userId = null;
-    const API_BASE = '';
+    // --- API_BASE handling ---
+    // We normalize the base path so this frontend works both:
+    //   1) at domain root (e.g. https://example.com/) → API_BASE = ""
+    //   2) at an Nginx subpath (e.g. https://example.com/lab/) → API_BASE = "/lab"
+    // This way all fetches remain relative to the correct app context without hardcoding.
+    // The regex /\/$/ trims a trailing slash for consistency.
+    const API_BASE = window.location.pathname.replace(/\/$/, "");
 
     async function loadApiKeys() {
       try {
@@ -738,7 +744,7 @@
 
     async function selectConversation(convo) {
       try {
-        const res = await fetch('/users', {
+        const res = await fetch(`${API_BASE}/users`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: convo.name })
