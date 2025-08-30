@@ -1107,8 +1107,47 @@ def piper_tts_stream(
             iterator = voice.synthesize(text, cfg)
         except TypeError:
             iterator = voice.synthesize(cfg, text)
+        # Adapter: normalize various chunk shapes to PCM16 bytes
+        def _chunk_to_pcm16_bytes(ch):
+            try:
+                import numpy as _np
+            except Exception:
+                _np = None
+
+            if isinstance(ch, (bytes, bytearray, memoryview)):
+                return bytes(ch)
+            # Common attributes across versions
+            for attr in ("audio", "audio_bytes", "data", "samples"):
+                if hasattr(ch, attr):
+                    val = getattr(ch, attr)
+                    if isinstance(val, (bytes, bytearray, memoryview)):
+                        return bytes(val)
+                    if _np is not None and isinstance(val, _np.ndarray):
+                        if val.dtype == _np.int16:
+                            return val.tobytes()
+                        if val.dtype == _np.float32:
+                            # Convert float32 [-1,1] to int16
+                            i16 = _np.clip(val, -1.0, 1.0)
+                            i16 = (i16 * 32767.0).astype(_np.int16)
+                            return i16.tobytes()
+                    if isinstance(val, list) and _np is not None:
+                        arr = _np.asarray(val)
+                        if arr.dtype != _np.int16:
+                            arr = _np.clip(arr, -1.0, 1.0)
+                            arr = (arr * 32767.0).astype(_np.int16)
+                        return arr.tobytes()
+            # Tuple style: (audio, ...)
+            if isinstance(ch, tuple) and ch:
+                return _chunk_to_pcm16_bytes(ch[0])
+            # Fallback
+            try:
+                return bytes(ch)
+            except Exception:
+                raise AttributeError("Unsupported Piper chunk shape; missing audio bytes")
+
         for chunk in iterator:
-            f32 = pcm16_to_float32(chunk.audio)
+            pcm = _chunk_to_pcm16_bytes(chunk)
+            f32 = pcm16_to_float32(pcm)
             last_block = f32
             f32_fx = apply_fx_block(board, f32, sr)
             yield float32_to_pcm16(f32_fx)
