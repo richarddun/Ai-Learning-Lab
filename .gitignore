@@ -214,3 +214,4 @@ local.db
 *.png
 OPERATIONS.md
 *.bak
+*planning.md
