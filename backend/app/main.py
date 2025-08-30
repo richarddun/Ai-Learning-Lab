@@ -1135,13 +1135,13 @@ const q = s => document.querySelector(s);
 q('#dlForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const r = await fetch('/admin/download', { method: 'POST', body: fd });
+  const r = await fetch('/lab/admin/download', { method: 'POST', body: fd });
   q('#dlOut').textContent = await r.text();
 });
 q('#trialForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const r = await fetch('/tts/stream', { method: 'POST', body: fd });
+  const r = await fetch('/lab/tts/stream', { method: 'POST', body: fd });
   if (!r.ok) {
     const msg = await r.text();
     q('#trialOut').textContent = `Error: ${r.status} ${r.statusText}\n${msg}`;
@@ -1232,7 +1232,7 @@ def avatar_gallery():
                 f"<figure class=\"card\">"
                 f"  <img loading=\"lazy\" src=\"{esc(it['url'])}\" alt=\"avatar\">"
                 f"  <figcaption>Char #{esc(str(it['char_id']))}<br><small>{esc(it['name'])}</small></figcaption>"
-                f"  <a class=\"dl\" href=\"/avatar-gallery/download?f={esc(it['rel'])}\">Download</a>"
+                f"  <a class=\"dl\" href=\"/lab/avatar-gallery/download?f={esc(it['rel'])}\">Download</a>"
                 f"</figure>"
             )
         )
@@ -1326,7 +1326,7 @@ def image_generate_page():
 <body>
   <header>
     <div><strong>Image Generate</strong></div>
-    <nav style=\"display:flex;gap:.6rem\"><a href=\"/\">Home</a><a href=\"/avatar-gallery\">Avatar Gallery</a></nav>
+    <nav style=\"display:flex;gap:.6rem\"><a href=\"/lab\">Home</a><a href=\"/lab/avatar-gallery\">Avatar Gallery</a></nav>
   </header>
   <div class=\"wrap\">
     <div class=\"panel\">
@@ -1368,7 +1368,7 @@ def image_generate_page():
       const btn = e.submitter || e.target.querySelector('button[type=submit]');
       const old = btn.textContent; btn.textContent = 'Generating…'; btn.disabled = true;
       try {
-        const res = await fetch('/image_generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, style, size }) });
+        const res = await fetch('/lab/image_generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, style, size }) });
         const text = await res.text();
         if (!res.ok) {
           addBubble(`<div>❌ ${res.status} ${res.statusText}</div><pre style=\"white-space:pre-wrap;\">${text.replace(/[&<>]/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]))}</pre>`);
