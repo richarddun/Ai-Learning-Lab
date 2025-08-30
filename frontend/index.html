@@ -668,6 +668,10 @@
 
     async function loadConversations() {
       try {
+        // Ensure characters are loaded so convo thumbnails can borrow avatars
+        if (!Array.isArray(window.characters) || !window.characters.length) {
+          try { await loadCharacters(); } catch (e) {}
+        }
         const res = await fetch(`${API_BASE}/users`);
         const data = await res.json();
         const users = data.users || [];
