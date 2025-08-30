@@ -452,7 +452,7 @@ body {
   width: min(720px, 92vw);
   max-height: 80vh;
   overflow: auto;
-  background: #2a2a2a;
+  background: #ac5aaec2;
   border: 1px solid #666;
   border-radius: 8px;
   box-shadow: 0 10px 24px rgba(0,0,0,0.5);
@@ -478,7 +478,7 @@ body {
 
 #prompt-wizard .pw-body {
   padding: 0.8rem;
-  background-color: #ac5aaec2;
+  background-color: #ac5aaec2;  
 }
 
 #prompt-wizard .pw-row { margin-bottom: 0.75rem; }

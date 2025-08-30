@@ -212,3 +212,4 @@ frontend/config.js
 frontend/config.example.js
 local.db
 *.png
+OPERATIONS.md

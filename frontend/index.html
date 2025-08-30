@@ -1645,6 +1645,8 @@
     };
 
     const newConvoBtn = document.getElementById('new-convo-btn');
+    console.log('loaded button');
+    console.log(newConvoBtn);
     if (newConvoBtn) newConvoBtn.onclick = () => openNewConvoDialog();
 
     loadConversations();
