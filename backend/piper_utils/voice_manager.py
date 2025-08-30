@@ -28,10 +28,45 @@ def voice_files_from_manifest(voice_id: str) -> Tuple[Path, Path]:
         raise ValueError(f"Voice '{voice_id}' not found in voices.json")
     info = manifest[voice_id]
     files = info.get("files", {}) or {}
-    onnx_rel = files.get("onnx") or files.get("model") or files.get("url")
-    json_rel = files.get("json") or (f"{onnx_rel}.json" if onnx_rel else None)
+
+    # Newer voices.json format uses a map of file-path -> metadata
+    # (e.g., {".../en_GB-alba-medium.onnx": {...}, ".../en_GB-alba-medium.onnx.json": {...}})
+    # Older assumptions looked for explicit keys like 'onnx' or 'json'. Support both.
+    onnx_rel = None
+    json_rel = None
+
+    # Try explicit fields first (legacy style)
+    if isinstance(files, dict):
+        for key in ("onnx", "model", "url"):
+            val = files.get(key) or info.get(key)
+            if isinstance(val, str) and val:
+                onnx_rel = val
+                break
+        json_val = files.get("json")
+        if isinstance(json_val, str) and json_val:
+            json_rel = json_val
+
+    # If not found, infer from file-path keys in the map
+    if onnx_rel is None and isinstance(files, dict):
+        file_keys = [k for k in files.keys() if isinstance(k, str)]
+        onnx_candidates = [k for k in file_keys if k.endswith(".onnx")]
+        if onnx_candidates:
+            # Prefer a file whose basename (without suffix) matches voice_id
+            from pathlib import Path as _P
+            exact = next((k for k in onnx_candidates if _P(k).stem == voice_id), None)
+            onnx_rel = exact or onnx_candidates[0]
+
+        # Find the matching sidecar json if present
+        if onnx_rel:
+            candidate_json = f"{onnx_rel}.json"
+            if candidate_json in files:
+                json_rel = candidate_json
+            elif json_rel is None:
+                # Fall back to conventional sidecar naming even if not listed explicitly
+                json_rel = candidate_json
+
     if not onnx_rel:
-        raise ValueError(f"voices.json entry for {voice_id} missing 'onnx' path")
+        raise ValueError(f"voices.json entry for {voice_id} missing '.onnx' file path")
 
     local_onnx = Path(_hf_download("rhasspy/piper-voices", onnx_rel, repo_type="model"))
     local_json = Path(_hf_download("rhasspy/piper-voices", json_rel, repo_type="model")) if json_rel else None
@@ -101,4 +136,3 @@ def read_sample_rate_from_sidecar(model_path: Path) -> int:
     if "low" in name:
         return 16000
     return 22050
-
