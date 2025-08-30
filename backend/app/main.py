@@ -1072,7 +1072,6 @@ def piper_tts_stream(
             return default
 
     cfg = SynthesisConfig(
-        text=text,
         speaker_id=_to_int_or_none(speaker_id),
         length_scale=_to_float(length_scale, 0.96),
         noise_scale=_to_float(noise_scale, 0.60),
@@ -1083,7 +1082,7 @@ def piper_tts_stream(
         # Header first for streaming WAV
         yield _wav_header(sr)
         last_block = None
-        for chunk in voice.synthesize(cfg):
+        for chunk in voice.synthesize(text, cfg):
             f32 = pcm16_to_float32(chunk.audio)
             last_block = f32
             f32_fx = apply_fx_block(board, f32, sr)
