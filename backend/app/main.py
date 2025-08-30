@@ -1186,7 +1186,7 @@ def avatar_gallery():
     assets_root = root / "frontend" / "assets"
     chars_dir = assets_root / "characters"
 
-    items: list[dict] = []
+    items: List[dict] = []
     try:
         if chars_dir.exists():
             for char_dir in sorted(chars_dir.iterdir()):
@@ -1293,6 +1293,233 @@ def avatar_gallery_download(f: str):
         media_type=media_type,
         filename=file_path.name,
     )
+
+
+# --- Standalone Image Generate (chat-like UI + API) ---
+@app.get("/image_generate", response_class=HTMLResponse)
+def image_generate_page():
+    """Simple page with a chat-like panel to generate and display images one by one."""
+    html = """<!doctype html>
+<html>
+<head>
+  <meta charset=\"utf-8\" />
+  <title>Image Generate</title>
+  <style>
+    body{margin:0;font-family:system-ui;background:#1e1e1e;color:#e8e8e8}
+    header{display:flex;gap:.5rem;align-items:center;justify-content:space-between;background:#2a2a2a;padding:.6rem 1rem;border-bottom:1px solid #444}
+    header a{color:#ddd;text-decoration:none}
+    .wrap{display:flex;max-width:1100px;margin:0 auto;}
+    .panel{flex:1;min-height:calc(100vh - 60px);display:flex;flex-direction:column}
+    .feed{flex:1;overflow:auto;padding:1rem;display:flex;flex-direction:column;gap:10px}
+    .bubble{max-width:720px;padding:.6rem .75rem;border-radius:10px;border:1px solid #444;background:#262626}
+    .bubble.you{align-self:flex-end;background:#2f3b2f;border-color:#3f5f3f}
+    .bubble img{max-width:min(100%, 560px);border-radius:8px;display:block}
+    form.gen{display:flex;gap:.5rem;padding:.6rem;border-top:1px solid #444;background:#2a2a2a;flex-wrap:wrap}
+    form.gen input[type=text]{flex:1;min-width:240px;padding:.5rem;border:1px solid #555;border-radius:6px;background:#1f1f1f;color:#eee}
+    form.gen select, form.gen button{padding:.5rem;border:1px solid #555;border-radius:6px;background:#3a3a3a;color:#eee}
+    figure{margin:.2rem 0}
+    figcaption{font-size:.85rem;opacity:.85;margin:.25rem 0 .35rem}
+    a.dl{display:inline-block;margin-top:.35rem;padding:.35rem .6rem;border:1px solid #666;border-radius:6px;text-decoration:none;color:#eee}
+    a.dl:hover{background:#3a3a3a}
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>Image Generate</strong></div>
+    <nav style=\"display:flex;gap:.6rem\"><a href=\"/\">Home</a><a href=\"/avatar-gallery\">Avatar Gallery</a></nav>
+  </header>
+  <div class=\"wrap\">
+    <div class=\"panel\">
+      <div id=\"feed\" class=\"feed\"></div>
+      <form id=\"genForm\" class=\"gen\" autocomplete=\"off\">
+        <input id=\"prompt\" type=\"text\" placeholder=\"Describe the image (kid-safe)\" required />
+        <select id=\"style\">
+          <option value=\"friendly colorful cartoon illustration\">Cartoon</option>
+          <option value=\"storybook watercolor illustration\">Storybook</option>
+          <option value=\"bright sci-fi cartoon, kid-safe\">Sci‑Fi</option>
+          <option value=\"whimsical fantasy cartoon, kid-safe\">Fantasy</option>
+          <option value=\"minimalist flat vector, kid-safe\">Minimal</option>
+        </select>
+        <select id=\"size\">
+          <option>1024x1024</option>
+          <option>1024x1792</option>
+          <option>1792x1024</option>
+        </select>
+        <button type=\"submit\">Generate</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    const feed = document.getElementById('feed');
+    function addBubble(html, you=false){
+      const div = document.createElement('div');
+      div.className = 'bubble' + (you ? ' you' : '');
+      div.innerHTML = html;
+      feed.appendChild(div);
+      feed.scrollTop = feed.scrollHeight;
+    }
+    document.getElementById('genForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const prompt = document.getElementById('prompt').value.trim();
+      const style = document.getElementById('style').value;
+      const size = document.getElementById('size').value;
+      if (!prompt) return;
+      addBubble(`<strong>You</strong><div>${prompt.replace(/[&<>]/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]))}</div>`, true);
+      const btn = e.submitter || e.target.querySelector('button[type=submit]');
+      const old = btn.textContent; btn.textContent = 'Generating…'; btn.disabled = true;
+      try {
+        const res = await fetch('/image_generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, style, size }) });
+        const text = await res.text();
+        if (!res.ok) {
+          addBubble(`<div>❌ ${res.status} ${res.statusText}</div><pre style=\"white-space:pre-wrap;\">${text.replace(/[&<>]/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]))}</pre>`);
+          return;
+        }
+        let data = {};
+        try { data = JSON.parse(text); } catch {}
+        const url = data.url || '';
+        if (url) {
+          const safeUrl = url.replace(/\"/g,'');
+          addBubble(`<figure><img alt=\"generated image\" src=\"${safeUrl}\"><figcaption>${new Date().toLocaleString()}</figcaption><a class=\"dl\" href=\"/avatar-gallery/download?f=${safeUrl.replace(/^\/assets\//,'')}\">Download</a></figure>`);
+        } else {
+          addBubble(`<div>⚠️ No image URL returned.</div>`);
+        }
+      } catch (err) {
+        addBubble(`<div>❌ Error: ${(err && err.message) || err}</div>`);
+      } finally {
+        btn.textContent = old; btn.disabled = false;
+        try { document.getElementById('prompt').value=''; document.getElementById('prompt').focus(); } catch {}
+      }
+    });
+  </script>
+</body></html>"""
+    return HTMLResponse(html)
+
+
+@app.post("/image_generate")
+async def image_generate(req: AvatarGenerateRequest, db: Session = Depends(get_db)):
+    """Generate an image using the configured provider and store under frontend/assets/generated.
+
+    Mirrors the avatar generator but without associating to a character.
+    """
+    openai_key = get_db_secret(db, "OPENAI_API_KEY")
+    if not openai_key:
+        raise HTTPException(status_code=503, detail="Image provider not configured")
+
+    base_style = req.style or "friendly colorful cartoon illustration"
+    size = req.size or "1024x1024"
+    extra_prompt = (req.prompt or "").strip()
+    composed_prompt = base_style
+    if extra_prompt:
+        composed_prompt += f". {extra_prompt}"
+
+    import httpx
+    headers = {"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"}
+
+    async def fetch_image_bytes(model: str) -> bytes:
+        body = {
+            "model": "dall-e-3",
+            "prompt": composed_prompt,
+            "size": size,
+            "n": 1,
+        }
+        if req.seed is not None:
+            body["seed"] = req.seed
+        async with httpx.AsyncClient(timeout=90) as client:
+            r = await client.post("https://api.openai.com/v1/images/generations", headers=headers, json=body)
+            if r.status_code >= 400:
+                try:
+                    logger.error("/image_generate %s error %s: %s", model, r.status_code, r.text)
+                except Exception:
+                    pass
+                r.raise_for_status()
+            content = r.json()
+        data = content.get("data", [])
+        if not data:
+            raise RuntimeError("No image data returned")
+        b64 = data[0].get("b64_json")
+        if b64:
+            return base64.b64decode(b64)
+        url = data[0].get("url")
+        if not url:
+            raise RuntimeError("No base64 or URL image content returned")
+        async with httpx.AsyncClient(timeout=90) as client:
+            resp = await client.get(url)
+            if resp.status_code >= 400:
+                logger.error("/image_generate download error %s: %s", resp.status_code, resp.text)
+                resp.raise_for_status()
+            return resp.content
+
+    try:
+        try:
+            img_bytes = await fetch_image_bytes(os.getenv("IMAGE_MODEL", "gpt-image-1"))
+        except httpx.HTTPStatusError as he:
+            if 400 <= he.response.status_code < 500:
+                img_bytes = await fetch_image_bytes("dall-e-3")
+            else:
+                raise
+    except Exception as e:
+        detail_text = str(e)
+        if isinstance(e, httpx.HTTPStatusError):
+            try:
+                detail_text = e.response.text
+            except Exception:
+                detail_text = str(e)
+        # Try to soften prompt via OpenRouter suggestion similar to avatar endpoint
+        suggestion = None
+        try:
+            import json as _json
+            parsed = None
+            try:
+                parsed = _json.loads(detail_text)
+            except Exception:
+                parsed = None
+            message_txt = None
+            code_txt = None
+            if isinstance(parsed, dict):
+                err = parsed.get("error") if parsed else None
+                if isinstance(err, dict):
+                    message_txt = err.get("message")
+                    code_txt = err.get("code")
+            if (code_txt == "content_policy_violation") or (message_txt and ("safety system" in message_txt or "rejected" in message_txt)):
+                sys_msg = (
+                    "You rewrite image prompts to be kid-safe and G-rated. "
+                    "Preserve intent; remove weapons, violence, gore, unsafe content. "
+                    "Return only the rewritten prompt."
+                )
+                user_msg = (
+                    "Original prompt (was rejected):\n" + composed_prompt + "\n\nRewrite as a friendly, colorful cartoon, G-rated."
+                )
+                try:
+                    suggestion = await chat_with_openrouter(message=user_msg, system_prompt=sys_msg)
+                except Exception:
+                    suggestion = None
+        except Exception:
+            suggestion = None
+
+        raise HTTPException(
+            status_code=422 if suggestion else 502,
+            detail={
+                "error": {"code": "content_policy_violation" if suggestion else "image_generation_error", "message": detail_text},
+                **({"suggestion": suggestion} if suggestion else {}),
+            },
+        )
+
+    # Store
+    try:
+        if not img_bytes or len(img_bytes) == 0:
+            raise RuntimeError("Empty image bytes")
+        root = Path(__file__).resolve().parent.parent.parent
+        out_dir = root / "frontend" / "assets" / "generated"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"img-{int(__import__('time').time())}.png"
+        out_path = out_dir / filename
+        with open(out_path, "wb") as f:
+            f.write(img_bytes)
+        rel_url = f"/assets/generated/{filename}"
+        return {"url": rel_url}
+    except Exception as e:
+        logger.exception("/image_generate store failed: %s", e)
+        raise HTTPException(status_code=500, detail="Image store failed")
 
 # Mount the frontend static files last to avoid shadowing specific routes like /admin
 frontend_dir = Path(__file__).resolve().parent.parent.parent / "frontend"
