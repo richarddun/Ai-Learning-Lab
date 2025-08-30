@@ -522,6 +522,7 @@
       } catch (e) {}
       currentTtsAudio = null;
       currentTtsUrl = null;
+      try { stopSpeakingIndicator(); } catch (e) {}
     }
     // Speaking indicator helpers (Level A)
     function startSpeakingIndicator() {
@@ -1515,6 +1516,8 @@
       if (isRecording) return;
       if (isProcessing) return; // wait until transcription finishes
       try {
+        // Stop any ongoing TTS/audio so mic capture doesn't overlap playback
+        stopAllSpeech();
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioChunks = [];
         mediaRecorder = new MediaRecorder(mediaStream);
@@ -1589,6 +1592,8 @@
 
       if (!ptpActive && !isProcessing && pressed.has('Shift') && pressed.has('KeyS')) {
         ptpActive = true;
+        // Stop any ongoing TTS immediately on push-to-talk
+        try { stopAllSpeech(); } catch (err) {}
         beginRecording();
         e.preventDefault();
       }
