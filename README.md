@@ -40,6 +40,18 @@ Visit `http://localhost:8000/` to access the frontend served by the backend. The
 Notes
 - Speech transcription is proxied through the backend at `/speech/transcribe`; configure `OPENAI_API_KEY` via the Settings UI (or `.env` only if `ALLOW_ENV_SECRETS=1`).
 
+### Avatar Gallery
+
+- Browse generated avatars: open `http://localhost:8000/avatar-gallery`.
+- Download any image: use the Download button in the gallery (served with attachment headers).
+- Images are stored under `frontend/assets/characters/<id>/avatar-*.png` when created by `/characters/{char_id}/avatar/generate`.
+
+### Image Generate
+
+- Try the dedicated image panel at `http://localhost:8000/image_generate`.
+- Enter a prompt, pick a style/size, and each result appears as an item in a chat-like feed with a download button.
+- Files are saved under `frontend/assets/generated/img-*.png`.
+
 ### Optional: HTTPS for Voice Streaming
 
 Some browsers require HTTPS for microphone access. A local Certificate Authority is bundled in `certs/ca.cert.pem`.

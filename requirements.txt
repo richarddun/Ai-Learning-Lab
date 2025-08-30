@@ -5,3 +5,8 @@ sqlalchemy
 python-dotenv
 elevenlabs
 python-multipart
+piper-tts
+pedalboard
+numpy
+soundfile
+huggingface_hub
