@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{% block title %}AI Learning Lab{% endblock %}</title>
+  <style>
+    /* Base resets and typography; avoid heavy theming to allow per-route styles */
+    :root { --gap: .5rem; }
+    html, body { margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    /* Mobile defaults */
+    @media (max-width: 640px) {
+      body { font-size: 16px; -webkit-text-size-adjust: 100%; }
+    }
+  </style>
+  {% block styles %}{% endblock %}
+  {% block head %}{% endblock %}
+  {% block head_scripts %}{% endblock %}
+  <script>
+    // Safe helper for basic HTML escaping in inline templates
+    window.escapeHTML = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  </script>
+</head>
+<body class="page-{% if page_class %}{{ page_class }}{% else %}generic{% endif %}">
+  {% block content %}{% endblock %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>
+

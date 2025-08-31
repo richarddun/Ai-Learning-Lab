@@ -1,8 +1,7 @@
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Avatar Gallery</title>
+{% extends "base.html" %}
+{% set page_class = "avatar-gallery" %}
+{% block title %}Avatar Gallery{% endblock %}
+{% block styles %}
 <style>
 body{font-family:system-ui;margin:1.5rem;}
 h1{margin:0 0 1rem 0;}
@@ -12,9 +11,12 @@ h1{margin:0 0 1rem 0;}
 .card figcaption{margin:.4rem 0 .6rem 0;font-size:.9rem;color:#333}
 .dl{display:inline-block;padding:.35rem .6rem;border:1px solid #888;border-radius:6px;text-decoration:none;color:#222;background:#f7f7f7}
 .dl:hover{background:#efefef}
+@media (max-width: 640px) {
+  body { margin: 1rem; }
+}
 </style>
-</head>
-<body>
+{% endblock %}
+{% block content %}
 <h1>Avatar Gallery</h1>
 <p>Total: {{ items|length }}</p>
 <div class="wrap">
@@ -30,5 +32,4 @@ h1{margin:0 0 1rem 0;}
     <p>No avatars found yet.</p>
   {% endif %}
 </div>
-</body>
-</html>
+{% endblock %}

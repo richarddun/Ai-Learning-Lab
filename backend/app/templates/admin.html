@@ -1,11 +1,12 @@
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8" />
-<title>Voice Admin</title>
-<style>body{font-family:system-ui;margin:2rem;max-width:840px}label{display:block;margin-top:.75rem}input,select,textarea{width:100%;padding:.4rem}button{margin-top:1rem;padding:.5rem 1rem}</style>
-</head>
-<body>
+{% extends "base.html" %}
+{% set page_class = "admin" %}
+{% block title %}Voice Admin{% endblock %}
+{% block styles %}
+<style>body{font-family:system-ui;margin:2rem;max-width:840px}label{display:block;margin-top:.75rem}input,select,textarea{width:100%;padding:.4rem}button{margin-top:1rem;padding:.5rem 1rem}
+@media (max-width: 640px){ body{ margin:1rem; } button{ min-height:44px; } input,select,textarea{ font-size:16px; } }
+</style>
+{% endblock %}
+{% block content %}
 <h1>Voice Admin</h1>
 <section>
   <h2>1) Download a Piper voice</h2>
@@ -33,6 +34,8 @@
   <audio id="player" controls></audio>
   <pre id="trialOut"></pre>
 </section>
+{% endblock %}
+{% block scripts %}
 <script>
 const q = s => document.querySelector(s);
 q('#dlForm').addEventListener('submit', async (e) => {
@@ -57,5 +60,4 @@ q('#trialForm').addEventListener('submit', async (e) => {
   audio.src = url; audio.play();
 });
 </script>
-</body>
-</html>
+{% endblock %}
