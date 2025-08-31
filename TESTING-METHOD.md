@@ -1,4 +1,4 @@
-Here’s a concise, repeatable testing script we can follow before every commit.
+Here’s a concise, repeatable testing script we can follow before every commit.  Note : You may need to call env/bin/pytest from the repo root if the venv wasn't activated properly.
 
 **One-Time Setup**
 
