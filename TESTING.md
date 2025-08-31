@@ -1,5 +1,20 @@
 # Testing Strategy
 
+## Dependencies
+
+Install the base and test packages before running the suite:
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
+
+Runtime dependencies such as `fastapi`, `sqlalchemy`, `httpx`,
+`python-dotenv`, `jinja2`, `elevenlabs`, `python-multipart`, `piper-tts`,
+`pedalboard`, `numpy`, `soundfile`, and `huggingface_hub` come from
+`requirements.txt`, while `pytest` and `pytest-asyncio` are provided by
+`requirements-dev.txt`.
+
 ## 1. Baseline tooling
 - **Testing framework**: `pytest` for Python with `pytest-asyncio` for async endpoints and services.
 - **Mocking HTTP calls**: use `respx` or `responses` to simulate external APIs like `openrouter`.
