@@ -50,7 +50,7 @@ Notes
 
 - Try the dedicated image panel at `http://localhost:8000/image_generate`.
 - Enter a prompt, pick a style/size, and each result appears as an item in a chat-like feed with a download button.
-- Files are saved under `frontend/assets/generated/img-*.png`.
+- Files are saved under `frontend/assets/characters/generated/img-*.png` so they're available in the avatar gallery and download endpoint.
 
 ### Optional: HTTPS for Voice Streaming
 

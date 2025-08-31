@@ -1267,7 +1267,8 @@ def image_generate_page(request: Request):
 
 @app.post("/image_generate")
 async def image_generate(req: AvatarGenerateRequest, db: Session = Depends(get_db)):
-    """Generate an image using the configured provider and store under frontend/assets/generated.
+    """Generate an image using the configured provider and store under
+    ``frontend/assets/characters/generated``.
 
     Mirrors the avatar generator but without associating to a character.
     """
@@ -1379,13 +1380,15 @@ async def image_generate(req: AvatarGenerateRequest, db: Session = Depends(get_d
         if not img_bytes or len(img_bytes) == 0:
             raise RuntimeError("Empty image bytes")
         root = Path(__file__).resolve().parent.parent.parent
-        out_dir = root / "frontend" / "assets" / "generated"
+        # Re-use the avatars location so the gallery and download endpoints
+        # automatically pick up these images as well.
+        out_dir = root / "frontend" / "assets" / "characters" / "generated"
         out_dir.mkdir(parents=True, exist_ok=True)
         filename = f"img-{int(__import__('time').time())}.png"
         out_path = out_dir / filename
         with open(out_path, "wb") as f:
             f.write(img_bytes)
-        rel_url = f"/assets/generated/{filename}"
+        rel_url = f"/assets/characters/generated/{filename}"
         return {"url": rel_url}
     except Exception as e:
         logger.exception("/image_generate store failed: %s", e)
