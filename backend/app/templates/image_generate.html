@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Image Generate</title>
+  <style>
+    body{margin:0;font-family:system-ui;background:#1e1e1e;color:#e8e8e8}
+    header{display:flex;gap:.5rem;align-items:center;justify-content:space-between;background:#2a2a2a;padding:.6rem 1rem;border-bottom:1px solid #444}
+    header a{color:#ddd;text-decoration:none}
+    .wrap{display:flex;max-width:1100px;margin:0 auto;}
+    .panel{flex:1;min-height:calc(100vh - 60px);display:flex;flex-direction:column}
+    .feed{flex:1;overflow:auto;padding:1rem;display:flex;flex-direction:column;gap:10px}
+    .bubble{max-width:720px;padding:.6rem .75rem;border-radius:10px;border:1px solid #444;background:#262626}
+    .bubble.you{align-self:flex-end;background:#2f3b2f;border-color:#3f5f3f}
+    .bubble img{max-width:min(100%, 560px);border-radius:8px;display:block}
+    form.gen{display:flex;gap:.5rem;padding:.6rem;border-top:1px solid #444;background:#2a2a2a;flex-wrap:wrap}
+    form.gen input[type=text]{flex:1;min-width:240px;padding:.5rem;border:1px solid #555;border-radius:6px;background:#1f1f1f;color:#eee}
+    form.gen select, form.gen button{padding:.5rem;border:1px solid #555;border-radius:6px;background:#3a3a3a;color:#eee}
+    figure{margin:.2rem 0}
+    figcaption{font-size:.85rem;opacity:.85;margin:.25rem 0 .35rem}
+    a.dl{display:inline-block;margin-top:.35rem;padding:.35rem .6rem;border:1px solid #666;border-radius:6px;text-decoration:none;color:#eee}
+    a.dl:hover{background:#3a3a3a}
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>Image Generate</strong></div>
+    <nav style="display:flex;gap:.6rem"><a href="/lab">Home</a><a href="/lab/avatar-gallery">Avatar Gallery</a></nav>
+  </header>
+  <div class="wrap">
+    <div class="panel">
+      <div id="feed" class="feed"></div>
+      <form id="genForm" class="gen" autocomplete="off">
+        <input id="prompt" type="text" placeholder="Describe the image (kid-safe)" required />
+        <select id="style">
+          <option value="friendly colorful cartoon illustration">Cartoon</option>
+          <option value="storybook watercolor illustration">Storybook</option>
+          <option value="bright sci-fi cartoon, kid-safe">Sci‑Fi</option>
+          <option value="whimsical fantasy cartoon, kid-safe">Fantasy</option>
+          <option value="minimalist flat vector, kid-safe">Minimal</option>
+        </select>
+        <select id="size">
+          <option>1024x1024</option>
+          <option>1024x1792</option>
+          <option>1792x1024</option>
+        </select>
+        <button type="submit">Generate</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    const feed = document.getElementById('feed');
+    function addBubble(html, you=false){
+      const div = document.createElement('div');
+      div.className = 'bubble' + (you ? ' you' : '');
+      div.innerHTML = html;
+      feed.appendChild(div);
+      feed.scrollTop = feed.scrollHeight;
+    }
+    document.getElementById('genForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const prompt = document.getElementById('prompt').value.trim();
+      const style = document.getElementById('style').value;
+      const size = document.getElementById('size').value;
+      if (!prompt) return;
+      addBubble(`<strong>You</strong><div>${prompt.replace(/[&<>]/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]))}</div>`, true);
+      const btn = e.submitter || e.target.querySelector('button[type=submit]');
+      const old = btn.textContent; btn.textContent = 'Generating…'; btn.disabled = true;
+      try {
+        const res = await fetch('/lab/image_generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, style, size }) });
+        const text = await res.text();
+        if (!res.ok) {
+          addBubble(`<div>❌ ${res.status} ${res.statusText}</div><pre style="white-space:pre-wrap;">${text.replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]))}</pre>`);
+          return;
+        }
+        let data = {};
+        try { data = JSON.parse(text); } catch {}
+        const url = data.url || '';
+        if (url) {
+          const safeUrl = url.replace(/"/g,'');
+          addBubble(`<figure><img alt="generated image" src="${safeUrl}"><figcaption>${new Date().toLocaleString()}</figcaption><a class="dl" href="/avatar-gallery/download?f=${safeUrl.replace(/^\/assets\//,'')}">Download</a></figure>`);
+        } else {
+          addBubble(`<div>⚠️ No image URL returned.</div>`);
+        }
+      } catch (err) {
+        addBubble(`<div>❌ Error: ${(err && err.message) || err}</div>`);
+      } finally {
+        btn.textContent = old; btn.disabled = false;
+        try { document.getElementById('prompt').value=''; document.getElementById('prompt').focus(); } catch {}
+      }
+    });
+  </script>
+</body>
+</html>

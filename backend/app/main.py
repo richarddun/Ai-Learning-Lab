@@ -1,7 +1,8 @@
 from typing import List, Optional
 from datetime import datetime, timezone
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse, Response, HTMLResponse, FileResponse
+from fastapi.templating import Jinja2Templates
 import logging
 import random
 import os
@@ -33,6 +34,7 @@ def get_db():
 
 
 app = FastAPI(title="AI Learning Lab")
+templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 logger = logging.getLogger("uvicorn.error")
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
@@ -1158,71 +1160,9 @@ def piper_tts_stream(
 
     return StreamingResponse(gen(), media_type="audio/wav")
 
-
-_ADMIN_HTML = """<!doctype html>
-<html>
-<head>
-<meta charset=\"utf-8\" />
-<title>Voice Admin</title>
-<style>body{font-family:system-ui;margin:2rem;max-width:840px}label{display:block;margin-top:.75rem}input,select,textarea{width:100%;padding:.4rem}button{margin-top:1rem;padding:.5rem 1rem}</style>
-<body>
-<h1>Voice Admin</h1>
-<section>
-  <h2>1) Download a Piper voice</h2>
-  <p>Paste a <code>voice_id</code> from <a target=\"_blank\" href=\"https://huggingface.co/rhasspy/piper-voices\">rhasspy/piper-voices</a> (e.g., <code>en_GB-kathleen-high</code>) and click download.</p>
-  <form id=\"dlForm\"><label>Voice ID <input name=\"voice_id\" placeholder=\"en_GB-kathleen-high\" required /></label><button type=\"submit\">Download</button></form>
-  <pre id=\"dlOut\"></pre>
-  <details><summary>Local voices dir</summary><code>/voices</code> (repo root)</details>
-  <hr />
-</section>
-<section>
-  <h2>2) Trial synthesis (TTS → FX → stream)</h2>
-  <form id=\"trialForm\">
-    <label>Voice ID or local .onnx path <input name=\"voice_id\" placeholder=\"en_GB-kathleen-high or ./voices/en_GB-kathleen-high.onnx\" required /></label>
-    <label>Preset <select name=\"preset\"><option>wizard</option><option>robot</option><option>fairy</option><option>goblin</option><option>none</option></select></label>
-    <details><summary>Advanced (Piper + FX params)</summary>
-      <label>speaker_id (int, optional) <input name=\"speaker_id\" /></label>
-      <label>length_scale (e.g., 0.96) <input name=\"length_scale\" value=\"0.96\" /></label>
-      <label>noise_scale (e.g., 0.6) <input name=\"noise_scale\" value=\"0.6\" /></label>
-      <label>noise_w (e.g., 0.8) <input name=\"noise_w\" value=\"0.8\" /></label>
-      <label>FX overrides (JSON) <input name=\"fx_overrides\" placeholder='{"pitch_semitones":-3,"wet":0.3}' /></label>
-    </details>
-    <label>Text to speak <textarea name=\"text\" rows=\"3\">Welcome back to the AI Learning Lab!</textarea></label>
-    <button type=\"submit\">Stream Trial</button>
-  </form>
-  <audio id=\"player\" controls></audio>
-  <pre id=\"trialOut\"></pre>
-</section>
-<script>
-const q = s => document.querySelector(s);
-q('#dlForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const r = await fetch('/lab/admin/download', { method: 'POST', body: fd });
-  q('#dlOut').textContent = await r.text();
-});
-q('#trialForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const r = await fetch('/lab/tts/stream', { method: 'POST', body: fd });
-  if (!r.ok) {
-    const msg = await r.text();
-    q('#trialOut').textContent = `Error: ${r.status} ${r.statusText}\n${msg}`;
-    return;
-  }
-  q('#trialOut').textContent = '';
-  const blob = await r.blob();
-  const url = URL.createObjectURL(blob);
-  const audio = q('#player');
-  audio.src = url; audio.play();
-});
-</script>
-</body></html>"""
-
-
 @app.get("/admin", response_class=HTMLResponse)
-def admin_page():
-    return HTMLResponse(_ADMIN_HTML)
+def admin_page(request: Request):
+    return templates.TemplateResponse("admin.html", {"request": request})
 
 
 @app.post("/admin/download")
@@ -1240,7 +1180,7 @@ def admin_download(voice_id: str = Form(...)):
 
 # --- Avatar Gallery (browse + download) ---
 @app.get("/avatar-gallery", response_class=HTMLResponse)
-def avatar_gallery():
+def avatar_gallery(request: Request):
     """Render a simple gallery page of generated avatars under frontend/assets/characters.
 
     Provides inline preview and a download link that forces attachment.
@@ -1274,54 +1214,14 @@ def avatar_gallery():
                                 "epoch": stat.st_mtime if 'stat' in locals() else 0,
                             }
                         )
-        # Most recent first
         items.sort(key=lambda d: d.get("epoch", 0), reverse=True)
     except Exception as e:
         logger.exception("/avatar-gallery listing failed: %s", e)
         items = []
 
-    def esc(s: str) -> str:
-        return (
-            s.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-        )
-
-    cards = []
-    for it in items:
-        cards.append(
-            (
-                f"<figure class=\"card\">"
-                f"  <img loading=\"lazy\" src=\"{esc(it['url'])}\" alt=\"avatar\">"
-                f"  <figcaption>Char #{esc(str(it['char_id']))}<br><small>{esc(it['name'])}</small></figcaption>"
-                f"  <a class=\"dl\" href=\"/lab/avatar-gallery/download?f={esc(it['rel'])}\">Download</a>"
-                f"</figure>"
-            )
-        )
-
-    html = (
-        "<!doctype html>\n"
-        "<html><head><meta charset=\"utf-8\">"
-        "<title>Avatar Gallery</title>"
-        "<style>"
-        "body{font-family:system-ui;margin:1.5rem;}"
-        "h1{margin:0 0 1rem 0;}"
-        ".wrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;}"
-        ".card{border:1px solid #ddd;border-radius:8px;padding:8px;box-shadow:0 1px 2px rgba(0,0,0,.05);background:#fff;}"
-        ".card img{width:100%;height:180px;object-fit:cover;border-radius:6px;}"
-        ".card figcaption{margin:.4rem 0 .6rem 0;font-size:.9rem;color:#333}"
-        ".dl{display:inline-block;padding:.35rem .6rem;border:1px solid #888;border-radius:6px;text-decoration:none;color:#222;background:#f7f7f7}"
-        ".dl:hover{background:#efefef}"
-        "</style></head><body>"
-        "<h1>Avatar Gallery</h1>"
-        f"<p>Total: {len(items)}</p>"
-        "<div class=\"wrap\">"
-        + ("".join(cards) if cards else "<p>No avatars found yet.</p>")
-        + "</div>"
-        "</body></html>"
+    return templates.TemplateResponse(
+        "avatar_gallery.html", {"request": request, "items": items}
     )
-    return HTMLResponse(html)
 
 
 @app.get("/avatar-gallery/download")
@@ -1360,102 +1260,9 @@ def avatar_gallery_download(f: str):
 
 # --- Standalone Image Generate (chat-like UI + API) ---
 @app.get("/image_generate", response_class=HTMLResponse)
-def image_generate_page():
+def image_generate_page(request: Request):
     """Simple page with a chat-like panel to generate and display images one by one."""
-    html = """<!doctype html>
-<html>
-<head>
-  <meta charset=\"utf-8\" />
-  <title>Image Generate</title>
-  <style>
-    body{margin:0;font-family:system-ui;background:#1e1e1e;color:#e8e8e8}
-    header{display:flex;gap:.5rem;align-items:center;justify-content:space-between;background:#2a2a2a;padding:.6rem 1rem;border-bottom:1px solid #444}
-    header a{color:#ddd;text-decoration:none}
-    .wrap{display:flex;max-width:1100px;margin:0 auto;}
-    .panel{flex:1;min-height:calc(100vh - 60px);display:flex;flex-direction:column}
-    .feed{flex:1;overflow:auto;padding:1rem;display:flex;flex-direction:column;gap:10px}
-    .bubble{max-width:720px;padding:.6rem .75rem;border-radius:10px;border:1px solid #444;background:#262626}
-    .bubble.you{align-self:flex-end;background:#2f3b2f;border-color:#3f5f3f}
-    .bubble img{max-width:min(100%, 560px);border-radius:8px;display:block}
-    form.gen{display:flex;gap:.5rem;padding:.6rem;border-top:1px solid #444;background:#2a2a2a;flex-wrap:wrap}
-    form.gen input[type=text]{flex:1;min-width:240px;padding:.5rem;border:1px solid #555;border-radius:6px;background:#1f1f1f;color:#eee}
-    form.gen select, form.gen button{padding:.5rem;border:1px solid #555;border-radius:6px;background:#3a3a3a;color:#eee}
-    figure{margin:.2rem 0}
-    figcaption{font-size:.85rem;opacity:.85;margin:.25rem 0 .35rem}
-    a.dl{display:inline-block;margin-top:.35rem;padding:.35rem .6rem;border:1px solid #666;border-radius:6px;text-decoration:none;color:#eee}
-    a.dl:hover{background:#3a3a3a}
-  </style>
-</head>
-<body>
-  <header>
-    <div><strong>Image Generate</strong></div>
-    <nav style=\"display:flex;gap:.6rem\"><a href=\"/lab\">Home</a><a href=\"/lab/avatar-gallery\">Avatar Gallery</a></nav>
-  </header>
-  <div class=\"wrap\">
-    <div class=\"panel\">
-      <div id=\"feed\" class=\"feed\"></div>
-      <form id=\"genForm\" class=\"gen\" autocomplete=\"off\">
-        <input id=\"prompt\" type=\"text\" placeholder=\"Describe the image (kid-safe)\" required />
-        <select id=\"style\">
-          <option value=\"friendly colorful cartoon illustration\">Cartoon</option>
-          <option value=\"storybook watercolor illustration\">Storybook</option>
-          <option value=\"bright sci-fi cartoon, kid-safe\">Sci‑Fi</option>
-          <option value=\"whimsical fantasy cartoon, kid-safe\">Fantasy</option>
-          <option value=\"minimalist flat vector, kid-safe\">Minimal</option>
-        </select>
-        <select id=\"size\">
-          <option>1024x1024</option>
-          <option>1024x1792</option>
-          <option>1792x1024</option>
-        </select>
-        <button type=\"submit\">Generate</button>
-      </form>
-    </div>
-  </div>
-  <script>
-    const feed = document.getElementById('feed');
-    function addBubble(html, you=false){
-      const div = document.createElement('div');
-      div.className = 'bubble' + (you ? ' you' : '');
-      div.innerHTML = html;
-      feed.appendChild(div);
-      feed.scrollTop = feed.scrollHeight;
-    }
-    document.getElementById('genForm').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const prompt = document.getElementById('prompt').value.trim();
-      const style = document.getElementById('style').value;
-      const size = document.getElementById('size').value;
-      if (!prompt) return;
-      addBubble(`<strong>You</strong><div>${prompt.replace(/[&<>]/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]))}</div>`, true);
-      const btn = e.submitter || e.target.querySelector('button[type=submit]');
-      const old = btn.textContent; btn.textContent = 'Generating…'; btn.disabled = true;
-      try {
-        const res = await fetch('/lab/image_generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, style, size }) });
-        const text = await res.text();
-        if (!res.ok) {
-          addBubble(`<div>❌ ${res.status} ${res.statusText}</div><pre style=\"white-space:pre-wrap;\">${text.replace(/[&<>]/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]))}</pre>`);
-          return;
-        }
-        let data = {};
-        try { data = JSON.parse(text); } catch {}
-        const url = data.url || '';
-        if (url) {
-          const safeUrl = url.replace(/\"/g,'');
-          addBubble(`<figure><img alt=\"generated image\" src=\"${safeUrl}\"><figcaption>${new Date().toLocaleString()}</figcaption><a class=\"dl\" href=\"/avatar-gallery/download?f=${safeUrl.replace(/^\/assets\//,'')}\">Download</a></figure>`);
-        } else {
-          addBubble(`<div>⚠️ No image URL returned.</div>`);
-        }
-      } catch (err) {
-        addBubble(`<div>❌ Error: ${(err && err.message) || err}</div>`);
-      } finally {
-        btn.textContent = old; btn.disabled = false;
-        try { document.getElementById('prompt').value=''; document.getElementById('prompt').focus(); } catch {}
-      }
-    });
-  </script>
-</body></html>"""
-    return HTMLResponse(html)
+    return templates.TemplateResponse("image_generate.html", {"request": request})
 
 
 @app.post("/image_generate")
