@@ -1,4 +1,5 @@
 fastapi
+jinja2
 uvicorn[standard]
 httpx
 sqlalchemy
