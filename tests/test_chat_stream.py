@@ -15,6 +15,9 @@ Base.metadata.create_all(bind=engine)
 
 def test_chat_stream_persists_bot_message(monkeypatch):
     db = SessionLocal()
+    # Ensure a clean state for the test database
+    db.query(models.User).filter(models.User.name == "StreamTester").delete()
+    db.commit()
     user = models.User(name="StreamTester")
     db.add(user)
     db.commit()
