@@ -215,3 +215,4 @@ local.db
 OPERATIONS.md
 *.bak
 *planning.md
+*-log.txt
