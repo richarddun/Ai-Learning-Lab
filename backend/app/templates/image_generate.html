@@ -2,45 +2,12 @@
 {% set page_class = "image-generate" %}
 {% block title %}Image Generate{% endblock %}
 {% block styles %}
-  <style>
-    body{margin:0;font-family:system-ui;background:#1e1e1e;color:#e8e8e8}
-    header{display:flex;gap:.5rem;align-items:center;justify-content:space-between;background:#2a2a2a;padding:.6rem 1rem;border-bottom:1px solid #444}
-    header a{color:#ddd;text-decoration:none}
-    .wrap{display:flex;max-width:1100px;margin:0 auto;}
-    .panel{flex:1;min-height:calc(100vh - 60px);display:flex;flex-direction:column}
-    .feed{flex:1;overflow:auto;padding:1rem;display:flex;flex-direction:column;gap:10px}
-    .bubble{max-width:720px;padding:.6rem .75rem;border-radius:10px;border:1px solid #444;background:#262626}
-    .bubble.you{align-self:flex-end;background:#2f3b2f;border-color:#3f5f3f}
-    .bubble img{max-width:min(100%, 560px);border-radius:8px;display:block}
-    form.gen{display:flex;gap:.5rem;padding:.6rem;border-top:1px solid #444;background:#2a2a2a;flex-wrap:wrap}
-    form.gen input[type=text]{flex:1;min-width:240px;padding:.5rem;border:1px solid #555;border-radius:6px;background:#1f1f1f;color:#eee;font-size:16px}
-    form.gen select, form.gen button{padding:.5rem;border:1px solid #555;border-radius:6px;background:#3a3a3a;color:#eee}
-    figure{margin:.2rem 0}
-    figcaption{font-size:.85rem;opacity:.85;margin:.25rem 0 .35rem}
-    a.dl{display:inline-block;margin-top:.35rem;padding:.35rem .6rem;border:1px solid #666;border-radius:6px;text-decoration:none;color:#eee}
-    a.dl:hover{background:#3a3a3a}
-
-    /* Mobile tweaks */
-    @media (max-width: 640px) {
-      body { font-size: 16px; -webkit-text-size-adjust: 100%; }
-      header { flex-wrap: wrap; gap: .75rem; padding: .75rem 1rem; }
-      .wrap { padding: 0 .5rem; }
-      .feed { padding: .75rem .25rem; }
-      .bubble { max-width: 100%; font-size: 1rem; }
-      .bubble img { max-width: 100%; height: auto; }
-
-      form.gen { position: sticky; bottom: 0; padding: .75rem .5rem; gap: .5rem; }
-      form.gen input[type=text] { min-width: 100%; padding: .75rem .9rem; font-size: 17px; }
-      form.gen select, form.gen button { padding: .7rem .9rem; font-size: 16px; }
-      form.gen button { min-height: 44px; }
-      a.dl { padding: .5rem .8rem; }
-    }
-  </style>
+  <link rel="stylesheet" href="/image-generate.css" />
 {% endblock %}
 {% block content %}
   <header>
     <div><strong>Image Generate</strong></div>
-    <nav style="display:flex;gap:.6rem"><a href="/lab">Home</a><a href="/lab/avatar-gallery">Avatar Gallery</a></nav>
+    <nav><a href="/lab">Home</a><a href="/lab/avatar-gallery">Avatar Gallery</a></nav>
   </header>
   <div class="wrap">
     <div class="panel">
