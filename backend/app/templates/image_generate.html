@@ -2,12 +2,15 @@
 {% set page_class = "image-generate" %}
 {% block title %}Image Generate{% endblock %}
 {% block styles %}
-  <link rel="stylesheet" href="/image-generate.css" />
+  <link rel="stylesheet" href="{{ request.url_for('frontend', path='image-generate.css') }}" />
 {% endblock %}
 {% block content %}
   <header>
-    <div><strong>Image Generate</strong></div>
-    <nav><a href="/lab">Home</a><a href="/lab/avatar-gallery">Avatar Gallery</a></nav>
+    <div><strong>Image Generater</strong></div>
+    <nav>
+      <a href="{{ request.url_for('frontend', path='index.html') }}">Home</a>
+      <a href="{{ request.url_for('avatar_gallery') }}">Avatar Gallery</a>
+    </nav>
   </header>
   <div class="wrap">
     <div class="panel">
@@ -51,7 +54,7 @@
       const btn = e.submitter || e.target.querySelector('button[type=submit]');
       const old = btn.textContent; btn.textContent = 'Generating…'; btn.disabled = true;
       try {
-        const res = await fetch('/lab/image_generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, style, size }) });
+        const res = await fetch('{{ request.url_for("image_generate") }}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, style, size }) });
         const text = await res.text();
         if (!res.ok) {
           addBubble(`<div>❌ ${res.status} ${res.statusText}</div><pre style="white-space:pre-wrap;">${text.replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]))}</pre>`);
@@ -62,7 +65,7 @@
         const url = data.url || '';
         if (url) {
           const safeUrl = url.replace(/"/g,'');
-          addBubble(`<figure><img alt="generated image" src="${safeUrl}"><figcaption>${new Date().toLocaleString()}</figcaption><a class="dl" href="/avatar-gallery/download?f=${safeUrl.replace(/^\/assets\//,'')}">Download</a></figure>`);
+          addBubble(`<figure><img alt="generated image" src="${safeUrl}"><figcaption>${new Date().toLocaleString()}</figcaption><a class="dl" href="{{ request.url_for('avatar_gallery_download') }}?f=${safeUrl.replace(/^\/assets\//,'')}">Download</a></figure>`);
         } else {
           addBubble(`<div>⚠️ No image URL returned.</div>`);
         }

@@ -45,12 +45,40 @@ Limitations
 
   // Ring buffer for console logs since script load
   const consoleBuffer = [];
+  // Safely wrap console methods; skip if getter-only/non-writable (e.g., Firefox/Tampermonkey)
   const wrapConsole = (type) => {
     const orig = console[type];
-    console[type] = function(...args) {
-      try { consoleBuffer.push({ type, time: new Date().toISOString(), args: args.map(a => serializeForJSON(a)).slice(0, 10) }); } catch {}
-      return orig.apply(this, args);
+    if (typeof orig !== 'function') return; // nothing to wrap
+    const wrapper = function(...args) {
+      try {
+        consoleBuffer.push({
+          type,
+          time: new Date().toISOString(),
+          args: args.map(a => serializeForJSON(a)).slice(0, 10)
+        });
+      } catch {}
+      // Ensure correct receiver
+      return orig.apply(console, args);
     };
+    try {
+      const desc = Object.getOwnPropertyDescriptor(console, type);
+      if (!desc || desc.writable) {
+        console[type] = wrapper; // simple path
+        return;
+      }
+      if (desc.configurable) {
+        Object.defineProperty(console, type, {
+          value: wrapper,
+          configurable: desc.configurable,
+          enumerable: desc.enumerable,
+          writable: desc.writable
+        });
+        return;
+      }
+      // Non-writable and not configurable: skip wrapping to avoid runtime error
+    } catch {
+      // Accessing descriptor or defining may throw in some environments; skip wrapping
+    }
   };
   ['log','warn','error'].forEach(wrapConsole);
 
@@ -355,4 +383,3 @@ Limitations
     buildUI();
   }
 })();
-
