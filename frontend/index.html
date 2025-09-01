@@ -16,8 +16,8 @@
         <div class="hero-actions">
           <button id="new-convo-btn" class="primary">Start New</button>
           <button id="settings-btn" title="Settings">⚙️ Settings</button>
-          <a id="avatar-gallery-link" class="secondary" href="/lab/avatar-gallery" title="Browse and download generated avatars">Avatar Gallery</a>
-          <a id="image-generate-link" class="secondary" href="/lab/image_generate" title="Generate images in a chat-style view">Image Generate</a>
+          <a id="avatar-gallery-link" class="secondary" href="avatar-gallery" title="Browse and download generated avatars">Avatar Gallery</a>
+          <a id="image-generate-link" class="secondary" href="image_generate" title="Generate images in a chat-style view">Image Generate</a>
         </div>
       </div>
     </div>
@@ -583,12 +583,22 @@
     let systemPrompt = '';
     let userId = null;
     // --- API_BASE handling ---
-    // We normalize the base path so this frontend works both:
-    //   1) at domain root (e.g. https://example.com/) → API_BASE = ""
-    //   2) at an Nginx subpath (e.g. https://example.com/lab/) → API_BASE = "/lab"
-    // This way all fetches remain relative to the correct app context without hardcoding.
-    // The regex /\/$/ trims a trailing slash for consistency.
-    const API_BASE = window.location.pathname.replace(/\/$/, "");
+    // Normalize base so it works at root or subpath, regardless of index.html.
+    // Examples:
+    //  - '/'                -> ''
+    //  - '/lab/'            -> '/lab'
+    //  - '/lab'             -> '/lab'
+    //  - '/lab/index.html'  -> '/lab'
+    (function(){
+      const path = window.location.pathname;
+      let base = path;
+      if (/\.html$/i.test(path)) {
+        base = path.replace(/\/[^\/]+\.html$/i, '');
+      }
+      base = base.replace(/\/$/, '');
+      window.API_BASE = base;
+    })();
+    const API_BASE = window.API_BASE;
  
     function resolveUrl(u) {
      if (!u) return u;

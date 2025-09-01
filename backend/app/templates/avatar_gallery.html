@@ -17,7 +17,14 @@ h1{margin:0 0 1rem 0;}
 </style>
 {% endblock %}
 {% block content %}
-<h1>Avatar Gallery</h1>
+<header style="display:flex; align-items:center; gap:1rem; margin-bottom:0.75rem">
+  <a href="{{ request.url_for('frontend', path='') }}" style="text-decoration:none">⟵ Home</a>
+  <h1 style="margin:0">Avatar Gallery</h1>
+  <div style="margin-left:auto">
+    <a class="dl" href="{{ request.url_for('image_generate_page') }}">Image Generate</a>
+  </div>
+  
+</header>
 <p>Total: {{ items|length }}</p>
 <div class="wrap">
   {% if items %}
