@@ -25,7 +25,7 @@ h1{margin:0 0 1rem 0;}
       <figure class="card">
         <img loading="lazy" src="{{ it.url }}" alt="avatar">
         <figcaption>Char #{{ it.char_id }}<br><small>{{ it.name }}</small></figcaption>
-        <a class="dl" href="/lab/avatar-gallery/download?f={{ it.rel }}">Download</a>
+        <a class="dl" href="{{ request.url_for('avatar_gallery_download') }}?f={{ it.rel }}">Download</a>
       </figure>
     {% endfor %}
   {% else %}

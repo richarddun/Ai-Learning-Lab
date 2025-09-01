@@ -41,13 +41,13 @@ const q = s => document.querySelector(s);
 q('#dlForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const r = await fetch('/lab/admin/download', { method: 'POST', body: fd });
+  const r = await fetch('{{ request.url_for("admin_download") }}', { method: 'POST', body: fd });
   q('#dlOut').textContent = await r.text();
 });
 q('#trialForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
-  const r = await fetch('/lab/tts/stream', { method: 'POST', body: fd });
+  const r = await fetch('{{ request.url_for("tts_stream") }}', { method: 'POST', body: fd });
   if (!r.ok) {
     const msg = await r.text();
     q('#trialOut').textContent = `Error: ${r.status} ${r.statusText}\n${msg}`;
