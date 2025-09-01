@@ -10,6 +10,7 @@
     <nav>
       <a href="{{ request.url_for('frontend', path='index.html') }}">Home</a>
       <a href="{{ request.url_for('avatar_gallery') }}">Avatar Gallery</a>
+      <a href="{{ request.url_for('frontend', path='index.html') }}#settings" title="Configure API keys">Settings</a>
     </nav>
   </header>
   <div class="wrap">
@@ -17,6 +18,11 @@
       <div id="feed" class="feed"></div>
       <form id="genForm" class="gen" autocomplete="off">
         <input id="prompt" type="text" placeholder="Describe the image (kid-safe)" required />
+        <select id="provider" title="Image provider">
+          <option value="openai">OpenAI Images</option>
+          <option value="openrouter">OpenRouter (Gemini 2.5 Image Preview – free)</option>
+        </select>
+        <input id="model" type="text" placeholder="Model (optional)" title="Override model id (e.g., google/gemini-2.5-flash-image-preview:free)" style="display:none" />
         <select id="style">
           <option value="friendly colorful cartoon illustration">Cartoon</option>
           <option value="storybook watercolor illustration">Storybook</option>
@@ -47,6 +53,8 @@
     document.getElementById('genForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const prompt = document.getElementById('prompt').value.trim();
+      const provider = document.getElementById('provider').value;
+      const model = document.getElementById('model').value.trim();
       const style = document.getElementById('style').value;
       const size = document.getElementById('size').value;
       if (!prompt) return;
@@ -54,7 +62,9 @@
       const btn = e.submitter || e.target.querySelector('button[type=submit]');
       const old = btn.textContent; btn.textContent = 'Generating…'; btn.disabled = true;
       try {
-        const res = await fetch('{{ request.url_for("image_generate") }}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, style, size }) });
+        const payload = { prompt, style, size, provider };
+        if (model) payload.model = model;
+        const res = await fetch('{{ request.url_for("image_generate") }}', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const text = await res.text();
         if (!res.ok) {
           addBubble(`<div>❌ ${res.status} ${res.statusText}</div><pre style="white-space:pre-wrap;">${text.replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]))}</pre>`);
@@ -76,5 +86,27 @@
         try { document.getElementById('prompt').value=''; document.getElementById('prompt').focus(); } catch {}
       }
     });
+
+    // Apply saved defaults from Settings
+    const providerSel = document.getElementById('provider');
+    const modelInput = document.getElementById('model');
+    try {
+      const savedProv = localStorage.getItem('imgProviderDefault');
+      if (savedProv === 'openai' || savedProv === 'openrouter') providerSel.value = savedProv;
+      const savedModel = localStorage.getItem('imgModelDefault');
+      if (savedModel) modelInput.value = savedModel;
+    } catch (e) {}
+    // Toggle model override visibility for OpenRouter
+    providerSel.addEventListener('change', () => {
+      if (providerSel.value === 'openrouter') {
+        modelInput.style.display = '';
+        if (!modelInput.value) modelInput.value = 'google/gemini-2.5-flash-image-preview:free';
+      } else {
+        modelInput.style.display = 'none';
+        modelInput.value = '';
+      }
+    });
+    // Run toggle once on load
+    providerSel.dispatchEvent(new Event('change'));
   </script>
 {% endblock %}

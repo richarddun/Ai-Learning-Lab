@@ -108,6 +108,9 @@ class AvatarGenerateRequest(BaseModel):
     size: Optional[str] = None  # e.g., "512x512"
     seed: Optional[int] = None
     include_system_prompt: Optional[bool] = False
+    # Image provider config (optional UI control)
+    provider: Optional[str] = None  # 'openai' (default) or 'openrouter'
+    model: Optional[str] = None     # optional override (e.g., OpenRouter model id)
 
 
 class PersonaSuggestRequest(BaseModel):
@@ -512,7 +515,7 @@ async def suggest_name_from_history(user_id: int, db: Session = Depends(get_db))
 
 @app.post("/characters/{char_id}/avatar/generate")
 async def generate_character_avatar(char_id: int, req: AvatarGenerateRequest, db: Session = Depends(get_db)):
-    """Generate a kid-friendly avatar image for a character using OpenAI Images.
+    """Generate a kid-friendly avatar image for a character using the selected provider.
 
     Stores the image under frontend/assets/characters/{id}/ and updates the character avatar URL.
     """
@@ -520,9 +523,10 @@ async def generate_character_avatar(char_id: int, req: AvatarGenerateRequest, db
     if not c:
         raise HTTPException(status_code=404, detail="Character not found")
 
-    openai_key = get_db_secret(db, "OPENAI_API_KEY")
-    if not openai_key:
-        raise HTTPException(status_code=503, detail="Image provider not configured")
+    # Decide provider; default to OpenAI for compatibility
+    provider = (req.provider or "openai").strip().lower()
+    if provider not in ("openai", "openrouter"):
+        provider = "openai"
 
     # Build a safe, kid-friendly prompt
     base_style = (
@@ -542,59 +546,103 @@ async def generate_character_avatar(char_id: int, req: AvatarGenerateRequest, db
     if extra_prompt:
         composed_prompt += f" {extra_prompt}"
 
-    # Call OpenAI Images API directly with httpx
+    # Provider-specific httpx usage
     import httpx
 
-    headers = {
-        "Authorization": f"Bearer {openai_key}",
-        "Content-Type": "application/json",
-    }
-
-    async def fetch_image_bytes(model: str) -> bytes:
-        body = {
-            "model": "dall-e-3",
-            "prompt": composed_prompt,
-            "size": size,
-            "n": 1
-            #"response_format": "b64_json",
+    if provider == "openrouter":
+        openrouter_key = get_db_secret(db, "OPENROUTER_API_KEY")
+        if not openrouter_key:
+            raise HTTPException(status_code=503, detail="OpenRouter API key not configured")
+        or_headers = {
+            "Authorization": f"Bearer {openrouter_key}",
+            "Content-Type": "application/json",
+            "X-Title": "AI Learning Lab",
         }
-        if req.seed is not None:
-            # Some models may ignore/deny seed; harmless to include
-            body["seed"] = req.seed
-        async with httpx.AsyncClient(timeout=90) as client:
-            r = await client.post("https://api.openai.com/v1/images/generations", headers=headers, json=body)
+
+        async def fetch_image_bytes(model: str) -> bytes:
+            chosen_model = (req.model or model or "google/gemini-2.5-flash-image-preview:free").strip()
+            body = {
+                "model": chosen_model,
+                "prompt": composed_prompt,
+                "size": size,
+                "n": 1,
+            }
+            if req.seed is not None:
+                body["seed"] = req.seed
+            async with httpx.AsyncClient(timeout=90) as client:
+                r = await client.post("https://openrouter.ai/api/v1/images", headers=or_headers, json=body)
             if r.status_code >= 400:
-                # Log server response body for diagnosis
+                try:
+                    logger.error("/avatar/generate (openrouter %s) error %s: %s", chosen_model, r.status_code, r.text)
+                except Exception:
+                    pass
+                r.raise_for_status()
+            content = r.json()
+            data = content.get("data", [])
+            if not data:
+                raise RuntimeError("No image data returned")
+            b64 = data[0].get("b64_json")
+            if b64:
+                return base64.b64decode(b64)
+            url = data[0].get("url")
+            if not url:
+                raise RuntimeError("No base64 or URL image content returned")
+            async with httpx.AsyncClient(timeout=90) as client:
+                resp = await client.get(url)
+                if resp.status_code >= 400:
+                    logger.error("/avatar/generate (openrouter) download error %s: %s", resp.status_code, resp.text)
+                    resp.raise_for_status()
+                return resp.content
+    else:
+        openai_key = get_db_secret(db, "OPENAI_API_KEY")
+        if not openai_key:
+            raise HTTPException(status_code=503, detail="OpenAI API key not configured")
+        headers = {
+            "Authorization": f"Bearer {openai_key}",
+            "Content-Type": "application/json",
+        }
+
+        async def fetch_image_bytes(model: str) -> bytes:
+            body = {
+                "model": "dall-e-3",
+                "prompt": composed_prompt,
+                "size": size,
+                "n": 1
+            }
+            if req.seed is not None:
+                body["seed"] = req.seed
+            async with httpx.AsyncClient(timeout=90) as client:
+                r = await client.post("https://api.openai.com/v1/images/generations", headers=headers, json=body)
+            if r.status_code >= 400:
                 try:
                     logger.error("/avatar/generate %s error %s: %s", model, r.status_code, r.text)
                 except Exception:
                     pass
                 r.raise_for_status()
             content = r.json()
-        data = content.get("data", [])
-        if not data:
-            raise RuntimeError("No image data returned")
-        b64 = data[0].get("b64_json")
-        if b64:
-            return base64.b64decode(b64)
-        # Fallback: download URL if provided
-        url = data[0].get("url")
-        if not url:
-            raise RuntimeError("No base64 or URL image content returned")
-        async with httpx.AsyncClient(timeout=90) as client:
-            resp = await client.get(url)
-            if resp.status_code >= 400:
-                logger.error("/avatar/generate download error %s: %s", resp.status_code, resp.text)
-                resp.raise_for_status()
-            return resp.content
+            data = content.get("data", [])
+            if not data:
+                raise RuntimeError("No image data returned")
+            b64 = data[0].get("b64_json")
+            if b64:
+                return base64.b64decode(b64)
+            url = data[0].get("url")
+            if not url:
+                raise RuntimeError("No base64 or URL image content returned")
+            async with httpx.AsyncClient(timeout=90) as client:
+                resp = await client.get(url)
+                if resp.status_code >= 400:
+                    logger.error("/avatar/generate download error %s: %s", resp.status_code, resp.text)
+                    resp.raise_for_status()
+                return resp.content
 
     # Try gpt-image-1, then fallback to dall-e-3 if 4xx indicates unsupported params/model
     try:
         try:
             img_bytes = await fetch_image_bytes(os.getenv("IMAGE_MODEL", "gpt-image-1"))
         except httpx.HTTPStatusError as he:
-            if 400 <= he.response.status_code < 500:
-                # Fallback model
+            if provider == "openai" and 400 <= he.response.status_code < 500:
+                # Fallback model for OpenAI path
                 img_bytes = await fetch_image_bytes("dall-e-3")
             else:
                 raise
@@ -1272,9 +1320,10 @@ async def image_generate(req: AvatarGenerateRequest, db: Session = Depends(get_d
 
     Mirrors the avatar generator but without associating to a character.
     """
-    openai_key = get_db_secret(db, "OPENAI_API_KEY")
-    if not openai_key:
-        raise HTTPException(status_code=503, detail="Image provider not configured")
+    # Decide provider (default to OpenAI for backwards compatibility)
+    provider = (req.provider or "openai").strip().lower()
+    if provider not in ("openai", "openrouter"):
+        provider = "openai"
 
     base_style = req.style or "friendly colorful cartoon illustration"
     size = req.size or "1024x1024"
@@ -1284,47 +1333,105 @@ async def image_generate(req: AvatarGenerateRequest, db: Session = Depends(get_d
         composed_prompt += f". {extra_prompt}"
 
     import httpx
-    headers = {"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"}
-
-    async def fetch_image_bytes(model: str) -> bytes:
-        body = {
-            "model": "dall-e-3",
-            "prompt": composed_prompt,
-            "size": size,
-            "n": 1,
+    # Build provider-specific headers and fetcher
+    if provider == "openrouter":
+        openrouter_key = get_db_secret(db, "OPENROUTER_API_KEY")
+        if not openrouter_key:
+            raise HTTPException(status_code=503, detail="OpenRouter API key not configured")
+        or_headers = {
+            "Authorization": f"Bearer {openrouter_key}",
+            "Content-Type": "application/json",
+            # Optional but recommended by OpenRouter
+            "X-Title": "AI Learning Lab",
         }
-        if req.seed is not None:
-            body["seed"] = req.seed
-        async with httpx.AsyncClient(timeout=90) as client:
-            r = await client.post("https://api.openai.com/v1/images/generations", headers=headers, json=body)
+
+        async def fetch_image_bytes(model: str) -> bytes:
+            # Default to Gemini 2.5 Flash Image Preview free model unless overridden
+            chosen_model = (req.model or model or "google/gemini-2.5-flash-image-preview:free").strip()
+            body = {
+                "model": chosen_model,
+                "prompt": composed_prompt,
+                "size": size,
+                "n": 1,
+                # Most providers return data[0].b64_json or data[0].url in OpenAI-compatible schema
+            }
+            if req.seed is not None:
+                body["seed"] = req.seed
+            async with httpx.AsyncClient(timeout=90) as client:
+                # Try OpenAI-compatible images endpoint on OpenRouter
+                r = await client.post(
+                    "https://openrouter.ai/api/v1/images",
+                    headers=or_headers,
+                    json=body,
+                )
             if r.status_code >= 400:
                 try:
-                    logger.error("/image_generate %s error %s: %s", model, r.status_code, r.text)
+                    logger.error("/image_generate (openrouter %s) error %s: %s", chosen_model, r.status_code, r.text)
                 except Exception:
                     pass
                 r.raise_for_status()
             content = r.json()
-        data = content.get("data", [])
-        if not data:
-            raise RuntimeError("No image data returned")
-        b64 = data[0].get("b64_json")
-        if b64:
-            return base64.b64decode(b64)
-        url = data[0].get("url")
-        if not url:
-            raise RuntimeError("No base64 or URL image content returned")
-        async with httpx.AsyncClient(timeout=90) as client:
-            resp = await client.get(url)
-            if resp.status_code >= 400:
-                logger.error("/image_generate download error %s: %s", resp.status_code, resp.text)
-                resp.raise_for_status()
-            return resp.content
+            data = content.get("data", [])
+            if not data:
+                raise RuntimeError("No image data returned")
+            b64 = data[0].get("b64_json")
+            if b64:
+                return base64.b64decode(b64)
+            url = data[0].get("url")
+            if not url:
+                raise RuntimeError("No base64 or URL image content returned")
+            async with httpx.AsyncClient(timeout=90) as client:
+                resp = await client.get(url)
+                if resp.status_code >= 400:
+                    logger.error("/image_generate (openrouter) download error %s: %s", resp.status_code, resp.text)
+                    resp.raise_for_status()
+                return resp.content
+    else:
+        openai_key = get_db_secret(db, "OPENAI_API_KEY")
+        if not openai_key:
+            raise HTTPException(status_code=503, detail="OpenAI API key not configured")
+        headers = {"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"}
+
+        async def fetch_image_bytes(model: str) -> bytes:
+            body = {
+                "model": "dall-e-3",
+                "prompt": composed_prompt,
+                "size": size,
+                "n": 1,
+            }
+            if req.seed is not None:
+                body["seed"] = req.seed
+            async with httpx.AsyncClient(timeout=90) as client:
+                r = await client.post("https://api.openai.com/v1/images/generations", headers=headers, json=body)
+                if r.status_code >= 400:
+                    try:
+                        logger.error("/image_generate %s error %s: %s", model, r.status_code, r.text)
+                    except Exception:
+                        pass
+                    r.raise_for_status()
+                content = r.json()
+            data = content.get("data", [])
+            if not data:
+                raise RuntimeError("No image data returned")
+            b64 = data[0].get("b64_json")
+            if b64:
+                return base64.b64decode(b64)
+            url = data[0].get("url")
+            if not url:
+                raise RuntimeError("No base64 or URL image content returned")
+            async with httpx.AsyncClient(timeout=90) as client:
+                resp = await client.get(url)
+                if resp.status_code >= 400:
+                    logger.error("/image_generate download error %s: %s", resp.status_code, resp.text)
+                    resp.raise_for_status()
+                return resp.content
 
     try:
         try:
+            # For OpenRouter, the model default is handled inside fetcher
             img_bytes = await fetch_image_bytes(os.getenv("IMAGE_MODEL", "gpt-image-1"))
         except httpx.HTTPStatusError as he:
-            if 400 <= he.response.status_code < 500:
+            if provider == "openai" and 400 <= he.response.status_code < 500:
                 img_bytes = await fetch_image_bytes("dall-e-3")
             else:
                 raise

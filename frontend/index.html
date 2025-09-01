@@ -26,6 +26,22 @@
       <h2>API Keys</h2>
       <div id="api-keys-required" style="margin-bottom:0.5rem"></div>
       <div id="api-keys-list"></div>
+      <hr style="margin:1rem 0" />
+      <h2>Image Generation Defaults</h2>
+      <div id="image-settings" style="display:flex; flex-direction:column; gap:0.5rem; max-width:520px">
+        <label>
+          Provider:
+          <select id="image-provider-default">
+            <option value="openai">OpenAI Images</option>
+            <option value="openrouter">OpenRouter (Gemini 2.5 Image Preview – free)</option>
+          </select>
+        </label>
+        <label>
+          Model (optional):
+          <input id="image-model-default" type="text" placeholder="e.g., google/gemini-2.5-flash-image-preview:free" />
+        </label>
+        <div style="font-size:0.9em; opacity:0.8">These defaults pre-fill the Image Generate tool. You can still override per request on that page.</div>
+      </div>
       <button id="add-key-btn">Add Key</button>
       <button id="close-settings-btn">Close</button>
     </div>
@@ -1080,10 +1096,21 @@
       const oldText = genAvatarBtn.textContent;
       genAvatarBtn.textContent = 'Generating…';
       try {
+        // Apply image settings defaults from Settings
+        let provider = 'openai';
+        let model = '';
+        try {
+          const p = localStorage.getItem('imgProviderDefault');
+          if (p === 'openai' || p === 'openrouter') provider = p;
+          const m = localStorage.getItem('imgModelDefault');
+          if (m) model = m;
+          if (provider === 'openrouter' && !model) model = 'google/gemini-2.5-flash-image-preview:free';
+        } catch (e) {}
+
         const res = await fetch(`${API_BASE}/characters/${targetId}/avatar/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ style, prompt, size, include_system_prompt })
+          body: JSON.stringify({ style, prompt, size, include_system_prompt, provider, model })
         });
         if (!res.ok) {
           const t = await res.text().catch(() => 'Unknown error');
@@ -1651,9 +1678,32 @@
       };
     }
 
+    function initImageSettings() {
+      const provSel = document.getElementById('image-provider-default');
+      const modelIn = document.getElementById('image-model-default');
+      try {
+        const p = localStorage.getItem('imgProviderDefault');
+        if (p === 'openai' || p === 'openrouter') provSel.value = p;
+        const m = localStorage.getItem('imgModelDefault');
+        if (m) modelIn.value = m;
+      } catch (e) {}
+      provSel.addEventListener('change', () => {
+        try { localStorage.setItem('imgProviderDefault', provSel.value); } catch (e) {}
+        // If selecting OpenRouter and model empty, suggest the free model
+        if (provSel.value === 'openrouter' && !modelIn.value) {
+          modelIn.value = 'google/gemini-2.5-flash-image-preview:free';
+          try { localStorage.setItem('imgModelDefault', modelIn.value); } catch (e) {}
+        }
+      });
+      modelIn.addEventListener('change', () => {
+        try { localStorage.setItem('imgModelDefault', modelIn.value.trim()); } catch (e) {}
+      });
+    }
+
     if (settingsBtn) settingsBtn.onclick = () => {
       settingsPanel.style.display = 'block';
       loadApiKeys();
+      initImageSettings();
     };
     if (closeSettingsBtn) closeSettingsBtn.onclick = () => {
       settingsPanel.style.display = 'none';
@@ -1679,6 +1729,11 @@
     loadConversations();
     // Attempt to load ElevenLabs voices and characters; silently degrade if not configured
     loadVoices().finally(loadCharacters);
+
+    // Open settings automatically if URL hash requests it
+    if (window.location.hash && window.location.hash.toLowerCase().includes('settings')) {
+      try { settingsBtn && settingsBtn.click(); } catch (e) {}
+    }
     
     // Back to conversations
     if (backBtn) backBtn.onclick = () => {
