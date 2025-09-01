@@ -15,7 +15,7 @@
         <p class="tagline">Resume a conversation or start a new one.</p>
         <div class="hero-actions">
           <button id="new-convo-btn" class="primary">Start New</button>
-          <button id="settings-btn" title="Settings">⚙️ Settings</button>
+          <button id="settings-btn" class="settings-btn" title="Settings">⚙️ Settings</button>
           <a id="avatar-gallery-link" class="secondary" href="avatar-gallery" title="Browse and download generated avatars">Avatar Gallery</a>
           <a id="image-generate-link" class="secondary" href="image_generate" title="Generate images in a chat-style view">Image Generate</a>
         </div>
@@ -52,6 +52,7 @@
     <input type="hidden" id="user-id" />
     <div id="topbar">
       <button id="back-btn" title="Back to conversations">⟵ Back</button>
+      <button id="menu-btn" title="Menu">☰</button>
       <img id="profile-avatar" src="" alt="avatar" />
       <span id="profile-name"></span>
       <span class="title">AI Learning Lab</span>
@@ -59,6 +60,7 @@
     <div id="container">
       <div id="sidebar">
         <h3>Configuration</h3>
+        <button class="settings-btn">Settings</button>
         <label for="persona-select">Character:</label>
         <select id="persona-select">
           <option value="">(loading…)</option>
@@ -136,7 +138,7 @@
             <option value="on" selected>Speak: On</option>
             <option value="off">Speak: Off</option>
           </select>
-          <span class="export-controls">
+          <span class="export-controls" id="export-controls">
             <select id="export-format" title="Export conversation as">
               <option value="markdown" selected>Export: Markdown</option>
               <option value="json">Export: JSON</option>
@@ -517,8 +519,12 @@
     const profileAvatar = document.getElementById('profile-avatar');
     const userIdField = document.getElementById('user-id');
     const backBtn = document.getElementById('back-btn');
-    const settingsBtn = document.getElementById('settings-btn');
+    const menuBtn = document.getElementById('menu-btn');
+    const sidebar = document.getElementById('sidebar');
     const settingsPanel = document.getElementById('settings-panel');
+    const settingsBtns = document.querySelectorAll('.settings-btn');
+    const exportControls = document.getElementById('export-controls');
+    const inputArea = document.getElementById('input-area');
     const apiKeysList = document.getElementById('api-keys-list');
     const addKeyBtn = document.getElementById('add-key-btn');
     const closeSettingsBtn = document.getElementById('close-settings-btn');
@@ -1710,11 +1716,13 @@
       });
     }
 
-    if (settingsBtn) settingsBtn.onclick = () => {
-      settingsPanel.style.display = 'block';
-      loadApiKeys();
-      initImageSettings();
-    };
+    settingsBtns.forEach(btn => {
+      btn.onclick = () => {
+        settingsPanel.style.display = 'block';
+        loadApiKeys();
+        initImageSettings();
+      };
+    });
     if (closeSettingsBtn) closeSettingsBtn.onclick = () => {
       settingsPanel.style.display = 'none';
     };
@@ -1731,6 +1739,22 @@
       loadApiKeys();
     };
 
+    if (menuBtn) menuBtn.onclick = () => {
+      if (sidebar) sidebar.classList.toggle('open');
+    };
+
+    function relocateExportControls() {
+      if (!exportControls || !sidebar || !inputArea) return;
+      if (window.innerWidth <= 780) {
+        if (!sidebar.contains(exportControls)) sidebar.appendChild(exportControls);
+      } else {
+        if (!inputArea.contains(exportControls)) inputArea.appendChild(exportControls);
+        sidebar.classList.remove('open');
+      }
+    }
+    window.addEventListener('resize', relocateExportControls);
+    relocateExportControls();
+
     const newConvoBtn = document.getElementById('new-convo-btn');
     console.log('loaded button');
     console.log(newConvoBtn);
@@ -1742,7 +1766,7 @@
 
     // Open settings automatically if URL hash requests it
     if (window.location.hash && window.location.hash.toLowerCase().includes('settings')) {
-      try { settingsBtn && settingsBtn.click(); } catch (e) {}
+      try { settingsBtns[0] && settingsBtns[0].click(); } catch (e) {}
     }
     
     // Back to conversations
