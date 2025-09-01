@@ -560,81 +560,42 @@ async def generate_character_avatar(char_id: int, req: AvatarGenerateRequest, db
         }
 
         async def fetch_image_bytes(model: str) -> bytes:
-            chosen_model = (req.model or model or "google/gemini-2.5-flash-image-preview:free").strip()
-            body = {
+            # Use chat completions with modalities per OpenRouter docs
+            chosen_model = (req.model or model or "google/gemini-2.5-flash-image-preview").strip()
+            payload = {
                 "model": chosen_model,
-                "prompt": composed_prompt,
-                "size": size,
-                "n": 1,
+                "messages": [{"role": "user", "content": composed_prompt}],
+                "modalities": ["image", "text"],
             }
-            if req.seed is not None:
-                body["seed"] = req.seed
-            async with httpx.AsyncClient(timeout=90) as client:
-                r = await client.post("https://openrouter.ai/api/v1/images", headers=or_headers, json=body)
-            ct = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
-            if r.status_code >= 400:
+            async with httpx.AsyncClient(timeout=120) as client:
+                rc = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=or_headers, json=payload)
+            if rc.status_code >= 400:
                 try:
-                    logger.error("/avatar/generate (openrouter %s) error %s: %s", chosen_model, r.status_code, r.text)
+                    logger.error("/avatar/generate (openrouter %s) error %s: %s", chosen_model, rc.status_code, rc.text)
                 except Exception:
                     pass
-                r.raise_for_status()
-            if ct.startswith("image/"):
-                return r.content
-            content_text = r.text
-            try:
-                content = r.json()
-            except Exception:
-                content = None
-            if isinstance(content, dict):
-                data = content.get("data", [])
-                if data:
-                    b64 = data[0].get("b64_json")
-                    if b64:
-                        return base64.b64decode(b64)
-                    url = data[0].get("url")
-                    if url:
-                        async with httpx.AsyncClient(timeout=90) as client:
-                            resp = await client.get(url)
-                        if resp.status_code >= 400:
-                            logger.error("/avatar/generate (openrouter) download error %s: %s", resp.status_code, resp.text)
-                            resp.raise_for_status()
-                        return resp.content
-            # Fallback via chat completions
-            messages = [{"role": "user", "content": [{"type": "input_text", "text": composed_prompt}]}]
-            chat_payload = {"model": chosen_model, "messages": messages}
-            async with httpx.AsyncClient(timeout=90) as client:
-                rc = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=or_headers, json=chat_payload)
-            if rc.status_code >= 400:
-                raise RuntimeError(f"OpenRouter image generation unsupported or failed. HTTP {r.status_code}. Body: {content_text[:300]}")
+                rc.raise_for_status()
             try:
                 cjson = rc.json()
             except Exception:
                 raise RuntimeError("OpenRouter chat returned non-JSON for image generation")
-            ch = (cjson.get("choices") or [{}])[0].get("message", {})
-            msg_content = ch.get("content")
-            if isinstance(msg_content, str):
+            msg = (cjson.get("choices") or [{}])[0].get("message", {})
+            images = msg.get("images") or []
+            if isinstance(images, list) and images:
+                first = images[0] or {}
+                iu = (first.get("image_url") or {}).get("url") or first.get("url")
+                if isinstance(iu, str) and iu.startswith("data:image/"):
+                    import re
+                    m = re.match(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", iu)
+                    if m:
+                        return base64.b64decode(m.group(1))
+            content = msg.get("content")
+            if isinstance(content, str):
                 import re
-                m = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", msg_content)
+                m = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", content)
                 if m:
                     return base64.b64decode(m.group(1))
-            if isinstance(msg_content, list):
-                for part in msg_content:
-                    if not isinstance(part, dict):
-                        continue
-                    t = (part.get("type") or "").lower()
-                    if t in ("output_image", "image", "image_url"):
-                        data_b64 = part.get("data") or part.get("b64_json")
-                        if data_b64:
-                            return base64.b64decode(data_b64)
-                        url = part.get("image_url") or part.get("url")
-                        if url:
-                            async with httpx.AsyncClient(timeout=90) as client:
-                                resp = await client.get(url)
-                            if resp.status_code >= 400:
-                                logger.error("/avatar/generate (openrouter-chat) download error %s: %s", resp.status_code, resp.text)
-                                resp.raise_for_status()
-                            return resp.content
-            raise RuntimeError("OpenRouter did not return recognizable image content")
+            raise RuntimeError("OpenRouter did not include images in response")
     else:
         openai_key = get_db_secret(db, "OPENAI_API_KEY")
         if not openai_key:
@@ -1383,100 +1344,48 @@ async def image_generate(req: AvatarGenerateRequest, db: Session = Depends(get_d
         or_headers = {
             "Authorization": f"Bearer {openrouter_key}",
             "Content-Type": "application/json",
-            # Optional but recommended by OpenRouter
             "X-Title": "AI Learning Lab",
         }
 
         async def fetch_image_bytes(model: str) -> bytes:
-            # Default to Gemini 2.5 Flash Image Preview free model unless overridden
-            chosen_model = (req.model or model or "google/gemini-2.5-flash-image-preview:free").strip()
-            body = {
+            # Use chat completions with modalities per OpenRouter docs
+            chosen_model = (req.model or model or "google/gemini-2.5-flash-image-preview").strip()
+            payload = {
                 "model": chosen_model,
-                "prompt": composed_prompt,
-                "size": size,
-                "n": 1,
-                # Most providers return data[0].b64_json or data[0].url in OpenAI-compatible schema
+                "messages": [{"role": "user", "content": composed_prompt}],
+                "modalities": ["image", "text"],
             }
-            if req.seed is not None:
-                body["seed"] = req.seed
-            async with httpx.AsyncClient(timeout=90) as client:
-                # First attempt: OpenAI-compatible images endpoint (if supported by OpenRouter)
-                r = await client.post("https://openrouter.ai/api/v1/images", headers=or_headers, json=body)
-            # If server returns non-JSON or HTML, try fallback via chat completions
-            ct = (r.headers.get("content-type") or "").split(";")[0].strip().lower()
-            if r.status_code >= 400:
+            async with httpx.AsyncClient(timeout=120) as client:
+                rc = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=or_headers, json=payload)
+            if rc.status_code >= 400:
                 try:
-                    logger.error("/image_generate (openrouter %s) error %s: %s", chosen_model, r.status_code, r.text)
+                    logger.error("/image_generate (openrouter %s) error %s: %s", chosen_model, rc.status_code, rc.text)
                 except Exception:
                     pass
-                r.raise_for_status()
-            if ct.startswith("image/"):
-                return r.content
-            content_text = r.text
-            try:
-                content = r.json()
-            except Exception:
-                # Fallback: try chat completions path
-                content = None
-            if isinstance(content, dict):
-                data = content.get("data", [])
-                if data:
-                    b64 = data[0].get("b64_json")
-                    if b64:
-                        return base64.b64decode(b64)
-                    url = data[0].get("url")
-                    if url:
-                        async with httpx.AsyncClient(timeout=90) as client:
-                            resp = await client.get(url)
-                        if resp.status_code >= 400:
-                            logger.error("/image_generate (openrouter) download error %s: %s", resp.status_code, resp.text)
-                            resp.raise_for_status()
-                        return resp.content
-            # Fallback: try via chat completions (some models return images that way)
-            messages = [
-                {"role": "user", "content": [
-                    {"type": "input_text", "text": composed_prompt}
-                ]}
-            ]
-            chat_payload = {"model": chosen_model, "messages": messages}
-            async with httpx.AsyncClient(timeout=90) as client:
-                rc = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=or_headers, json=chat_payload)
-            if rc.status_code >= 400:
-                # Raise with original body we saw to aid diagnosis
-                raise RuntimeError(f"OpenRouter image generation unsupported or failed. HTTP {r.status_code}. Body: {content_text[:300]}")
+                rc.raise_for_status()
             try:
                 cjson = rc.json()
             except Exception:
                 raise RuntimeError("OpenRouter chat returned non-JSON for image generation")
-            # Try to extract image content from chat response
-            ch = (cjson.get("choices") or [{}])[0].get("message", {})
-            msg_content = ch.get("content")
-            # If content is a string and contains data:image, extract base64
-            if isinstance(msg_content, str):
+            msg = (cjson.get("choices") or [{}])[0].get("message", {})
+            # Primary path: message.images -> [{ type: 'image_url', image_url: { url: 'data:image/...;base64,...' } }]
+            images = msg.get("images") or []
+            if isinstance(images, list) and images:
+                first = images[0] or {}
+                iu = (first.get("image_url") or {}).get("url") or first.get("url")
+                if isinstance(iu, str) and iu.startswith("data:image/"):
+                    import re
+                    m = re.match(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", iu)
+                    if m:
+                        return base64.b64decode(m.group(1))
+            # Fallback: try to find data URL in content string
+            content = msg.get("content")
+            if isinstance(content, str):
                 import re
-                m = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", msg_content)
+                m = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=]+)", content)
                 if m:
                     return base64.b64decode(m.group(1))
-            # If content is a list of typed parts
-            if isinstance(msg_content, list):
-                # Look for output_image with data or image_url
-                for part in msg_content:
-                    if not isinstance(part, dict):
-                        continue
-                    t = (part.get("type") or "").lower()
-                    if t in ("output_image", "image", "image_url"):
-                        data_b64 = part.get("data") or part.get("b64_json")
-                        if data_b64:
-                            return base64.b64decode(data_b64)
-                        url = part.get("image_url") or part.get("url")
-                        if url:
-                            async with httpx.AsyncClient(timeout=90) as client:
-                                resp = await client.get(url)
-                            if resp.status_code >= 400:
-                                logger.error("/image_generate (openrouter-chat) download error %s: %s", resp.status_code, resp.text)
-                                resp.raise_for_status()
-                            return resp.content
-            raise RuntimeError("OpenRouter did not return recognizable image content")
+            raise RuntimeError("OpenRouter did not include images in response")
     else:
         openai_key = get_db_secret(db, "OPENAI_API_KEY")
         if not openai_key:
