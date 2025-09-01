@@ -108,6 +108,19 @@ body {
 
 #back-btn:hover { background: #555; }
 
+#menu-btn {
+  display: none;
+  margin-right: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  background: #444;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#menu-btn:hover { background: #555; }
+
 #topbar img {
   width: 40px;
   height: 40px;
@@ -559,13 +572,27 @@ body {
     min-height: calc(100dvh - 70px);
   }
   #sidebar {
-    width: 100%;
-    max-height: 40vh;
-    margin-bottom: 0.5rem;
-    border-right: none;
-    border-bottom: 1px solid #666;
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 80%;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+    border-right: 1px solid #666;
+    border-bottom: none;
+    z-index: 1000;
+    background: #2a2a2a;
+    overflow-y: auto;
+    padding: 1rem;
   }
-  #chat-area { min-height: 60vh; }
+  #sidebar.open {
+    display: block;
+  }
+  #chat-area {
+    min-height: calc(100dvh - 70px);
+  }
   #input-area {
     flex-wrap: wrap;
     align-items: stretch;
@@ -575,16 +602,21 @@ body {
     min-height: 3.2rem;
     max-height: 30vh;
   }
-  .export-controls {
-    width: 100%;
+  #input-area .export-controls {
+    display: none;
+  }
+  #sidebar .export-controls {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 0.4rem;
-    margin-left: 0;
+    margin: 0 0 1rem 0;
   }
   #sidebar button,
   #input-area button {
     min-height: 40px; /* better tap targets */
+  }
+  #menu-btn {
+    display: block;
   }
 }
 
