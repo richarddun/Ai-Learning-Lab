@@ -1070,6 +1070,29 @@ def import_history(user_id: int, req: ImportRequest, db: Session = Depends(get_d
 # ----------------- Piper TTS + Admin (streaming WAV with FX) -----------------
 # We register these at the end to avoid import issues when optional deps are missing.
 
+# TODO(voice-studio): Dedicated Character Voice Studio
+# - Goal: End-to-end voice customization per character: pick a base Piper voice
+#   and interactively tailor FX (pitch, tone, reverb/echo, filters, compression, distortion),
+#   then save as a reusable preset bound to the character.
+# - Backend
+#   - Add GET /voice-studio to serve a dedicated UI.
+#   - Add POST/GET endpoints to preview (stream) with temporary fx_overrides without persisting.
+#   - Add CRUD for saved voice presets (DB table with: character_id, name, base_voice_id, fx_overrides JSON,
+#     piper params like length_scale/noise, created/updated timestamps).
+#   - Optional: WebSocket for real-time audition (hot-reload FX settings while streaming), else rapid re-POST.
+#   - Optional: pre-render caching/export of sample phrases for quick comparisons.
+# - Frontend (Studio UI)
+#   - Controls: base voice picker (piper voice id or local .onnx), preset select (wizard/robot/fairy/goblin/none),
+#     sliders for: pitch_semitones, gain_db, room_size, wet/dry, damping, filter cutoffs, delay, compressor params.
+#   - Visualizers: level meter and simple waveform via WebAudio.
+#   - Actions: Preview/Audition (stream), Save preset, Load preset, Export/Import JSON.
+#   - Integration: Attach chosen preset to a character so chat uses it when Speak mode is Piper.
+# - Ops & Safety
+#   - Enforce reasonable max durations and rate limits on audition to protect server resources.
+#   - Handle missing optional deps (pedalboard/piper) gracefully with clear UI messaging.
+# - Nice-to-have
+#   - A/B compare two presets, per-character default phrases for audition, and shareable preset links.
+
 def _wav_header(sample_rate: int, channels: int = 1, sampwidth: int = 2) -> bytes:
     """Return a stream-friendly WAV header.
 
@@ -1396,6 +1419,35 @@ def piper_tts_stream(
         "Accept-Ranges": "none",
     }
     return StreamingResponse(gen(), media_type="audio/wav", headers=headers)
+
+
+@app.get("/tts/stream/piper")
+def piper_tts_stream_get(
+    text: str,
+    voice_id: str,
+    preset: str = "wizard",
+    speaker_id: Optional[str] = None,
+    length_scale: Optional[str] = "0.96",
+    noise_scale: Optional[str] = "0.60",
+    noise_w: Optional[str] = "0.8",
+    fx_overrides: Optional[str] = None,
+    bypass_fx: Optional[str] = None,
+):
+    """GET alias for Piper streaming (audio/wav) suitable for <audio src>.
+
+    Accepts the same parameters as the POST form and delegates to the same implementation.
+    """
+    return piper_tts_stream(
+        text=text,
+        voice_id=voice_id,
+        preset=preset,
+        speaker_id=speaker_id,
+        length_scale=length_scale,
+        noise_scale=noise_scale,
+        noise_w=noise_w,
+        fx_overrides=fx_overrides,
+        bypass_fx=bypass_fx,
+    )
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page(request: Request):

@@ -135,7 +135,9 @@
           <button id="listen-btn" title="Push-to-talk (Shift+S)">🎤</button>
           <span id="recording-hint" aria-live="polite">Recording…</span>
           <select id="speech-toggle" title="Speech synthesis for replies">
-            <option value="on" selected>Speak: On</option>
+            <option value="on" selected>Speak: ElevenLabs</option>
+            <option value="piper-fx">Speak: Piper (FX)</option>
+            <option value="piper-raw">Speak: Piper (Raw)</option>
             <option value="off">Speak: Off</option>
           </select>
           <span class="export-controls" id="export-controls">
@@ -1271,7 +1273,7 @@
       }
       // Speak only if enabled
       const speechToggle = document.getElementById('speech-toggle');
-      const wantSpeech = !speechToggle || speechToggle.value === 'on';
+      const wantSpeech = !speechToggle || speechToggle.value !== 'off';
       if (wantSpeech) {
         speak(botText);
       }
@@ -1338,8 +1340,42 @@
       currentTtsAudio = null;
       currentTtsUrl = null;
 
-      // Try ElevenLabs via streaming endpoint first; fall back to buffered /tts, then browser TTS
+      // Choose engine from toggle: ElevenLabs (default), Piper (FX/Raw), or Off
       try {
+        const mode = st ? st.value : 'on';
+        // Piper engines
+        if (mode === 'piper-fx' || mode === 'piper-raw') {
+          // Allow using the same voice field; if empty, try a sensible Piper default
+          const vField = (window.ELEVENLABS_VOICE_ID || '').trim();
+          const voiceId = vField || 'en_GB-alba-medium';
+          if (!voiceId) throw new Error('No Piper voice configured');
+          if (st && st.value === 'off') return;
+          const qs = new URLSearchParams({ text: safeText, voice_id: voiceId, preset: 'wizard' });
+          if (mode === 'piper-raw') qs.set('bypass_fx', 'true');
+          const piperUrl = `${API_BASE}/tts/stream/piper?${qs.toString()}`;
+          const audio = new Audio(piperUrl);
+          currentTtsAudio = audio;
+          currentTtsUrl = null;
+          audio.play().then(() => {
+            console.info('[speak] Playing Piper streaming audio', { voiceId, mode });
+            try { profileAvatar.classList.add('speaking'); } catch (e) {}
+          }).catch((err) => {
+            console.warn('[speak] Piper streaming play failed; falling back to SpeechSynthesis', err);
+            if (!st || st.value !== 'off') {
+              const u = new SpeechSynthesisUtterance(safeText);
+              u.onstart = () => { try { profileAvatar.classList.add('speaking'); } catch (e) {} };
+              u.onend = () => { try { profileAvatar.classList.remove('speaking'); } catch (e) {} };
+              synth.speak(u);
+            }
+          });
+          audio.onended = () => {
+            currentTtsAudio = null;
+            try { profileAvatar.classList.remove('speaking'); } catch (e) {}
+          };
+          return;
+        }
+
+        // ElevenLabs engine (default)
         const voiceId = (window.ELEVENLABS_VOICE_ID || '').trim();
         if (!voiceId) {
           console.info('[speak] Skipping ElevenLabs: no voice configured (set window.ELEVENLABS_VOICE_ID)');
