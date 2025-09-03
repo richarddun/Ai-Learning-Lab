@@ -1150,6 +1150,7 @@ def piper_tts_stream(
             get_voice,
             ensure_voice_local,
             read_sample_rate_from_sidecar,
+            list_local_voice_files,
         )
         # Piper 1 API (import lazily to avoid failing app startup when missing)
         from piper.config import SynthesisConfig
@@ -1158,9 +1159,24 @@ def piper_tts_stream(
         raise HTTPException(status_code=503, detail=f"Piper/FX not available: {e}")
 
     import json as _json
-    # Load voice and sample rate
+    # Load voice and sample rate (with fallback if an ElevenLabs id was passed)
+    try:
+        model_path = ensure_voice_local(voice_id)
+    except Exception as e:
+        # If provided voice isn't a Piper voice, fall back to first local or a sensible default
+        locals_list = list_local_voice_files()
+        if locals_list:
+            fallback_id = locals_list[0].stem
+            app_logger.warning("/tts/stream rid=%s: voice '%s' unavailable; falling back to local '%s'",
+                               rid, voice_id, fallback_id)
+            voice_id = fallback_id
+            model_path = locals_list[0]
+        else:
+            app_logger.warning("/tts/stream rid=%s: no local Piper voices; attempting default 'en_GB-alba-medium'", rid)
+            model_path = ensure_voice_local("en_GB-alba-medium")
+            voice_id = "en_GB-alba-medium"
     voice = get_voice(voice_id)
-    sr = read_sample_rate_from_sidecar(ensure_voice_local(voice_id))
+    sr = read_sample_rate_from_sidecar(model_path)
     rid = uuid.uuid4().hex[:8]
     app_logger.info("/tts/stream start rid=%s voice_id=%s preset=%s text_len=%d sr=%d",
                     rid, voice_id, preset, len(text or ""), sr)
@@ -1448,6 +1464,17 @@ def piper_tts_stream_get(
         fx_overrides=fx_overrides,
         bypass_fx=bypass_fx,
     )
+
+
+@app.get("/tts/voices/piper")
+def list_piper_local_voices():
+    """List locally available Piper voices (downloaded under /voices)."""
+    try:
+        from backend.piper_utils.voice_manager import list_local_voice_ids
+        items = list_local_voice_ids()
+        return {"voices": [{"voice_id": vid, "name": vid} for vid in items]}
+    except Exception as e:
+        return {"voices": [], "error": str(e)}
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page(request: Request):

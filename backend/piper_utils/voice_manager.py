@@ -136,3 +136,14 @@ def read_sample_rate_from_sidecar(model_path: Path) -> int:
     if "low" in name:
         return 16000
     return 22050
+
+
+def list_local_voice_files() -> list[Path]:
+    try:
+        return sorted(VOICES_DIR.glob("*.onnx"))
+    except Exception:
+        return []
+
+
+def list_local_voice_ids() -> list[str]:
+    return [p.stem for p in list_local_voice_files()]

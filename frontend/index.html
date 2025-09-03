@@ -140,6 +140,10 @@
             <option value="piper-raw">Speak: Piper (Raw)</option>
             <option value="off">Speak: Off</option>
           </select>
+          <span id="piper-controls" title="Piper voice" style="display:none; gap:0.25rem; align-items:center;">
+            <select id="piper-voice" style="max-width:16rem"></select>
+            <button id="piper-voice-reload" class="icon-btn" type="button" title="Reload local Piper voices">⟳</button>
+          </span>
           <span class="export-controls" id="export-controls">
             <select id="export-format" title="Export conversation as">
               <option value="markdown" selected>Export: Markdown</option>
@@ -1225,6 +1229,45 @@
       }
     }
 
+    async function loadPiperVoices() {
+      const sel = document.getElementById('piper-voice');
+      if (!sel) return;
+      sel.innerHTML = '';
+      try {
+        const res = await fetch(`${API_BASE}/tts/voices/piper`);
+        const data = res.ok ? await res.json() : { voices: [] };
+        const list = Array.isArray(data.voices) ? data.voices : [];
+        // Restore saved voice id
+        let saved = '';
+        try { saved = (localStorage.getItem('piperVoiceId') || '').trim(); } catch (e) {}
+        if (!saved && window.PIPER_VOICE_ID) saved = String(window.PIPER_VOICE_ID).trim();
+        // Populate options
+        for (const v of list) {
+          const vid = v.voice_id || v.name || '';
+          if (!vid) continue;
+          const opt = document.createElement('option');
+          opt.value = vid; opt.textContent = vid;
+          sel.appendChild(opt);
+        }
+        // Ensure saved appears even if not in list (e.g., not yet downloaded)
+        if (saved && !Array.from(sel.options).some(o => o.value === saved)) {
+          const opt = document.createElement('option');
+          opt.value = saved; opt.textContent = saved + ' (not local)';
+          sel.appendChild(opt);
+        }
+        // Choose selected
+        if (saved) sel.value = saved;
+        if (!sel.value && sel.options.length) sel.value = sel.options[0].value;
+        // Persist selection
+        if (sel.value) {
+          window.PIPER_VOICE_ID = sel.value;
+          try { localStorage.setItem('piperVoiceId', sel.value); } catch (e) {}
+        }
+      } catch (e) {
+        console.warn('Failed to load Piper voices', e);
+      }
+    }
+
     function buildEffectiveSystemPrompt() {
       let effectiveSystemPrompt = systemPrompt || '';
       try {
@@ -1345,9 +1388,31 @@
         const mode = st ? st.value : 'on';
         // Piper engines
         if (mode === 'piper-fx' || mode === 'piper-raw') {
-          // Allow using the same voice field; if empty, try a sensible Piper default
+          // Choose a Piper voice:
+          // 1) window.PIPER_VOICE_ID if set
+          // 2) If ELEVENLABS_VOICE_ID looks like a Piper id (contains en_GB-..., ends with .onnx), use it
+          // 3) Query local Piper voices; pick first
+          // 4) Fallback to a common default id
+          let voiceId = (window.PIPER_VOICE_ID || '').trim();
           const vField = (window.ELEVENLABS_VOICE_ID || '').trim();
-          const voiceId = vField || 'en_GB-alba-medium';
+          const looksLikePiper = /[a-z]{2}_[A-Z]{2}-/.test(vField) || /\.onnx$/i.test(vField);
+          if (!voiceId && looksLikePiper) voiceId = vField;
+          if (!voiceId) {
+            try {
+              const res = await fetch(`${API_BASE}/tts/voices/piper`);
+              if (res.ok) {
+                const data = await res.json();
+                const list = Array.isArray(data.voices) ? data.voices : [];
+                if (list.length) {
+                  voiceId = list[0].voice_id || list[0].name || '';
+                  window.PIPER_VOICE_ID = voiceId;
+                }
+              }
+            } catch (e) {
+              // ignore; will fallback
+            }
+          }
+          if (!voiceId) voiceId = 'en_GB-alba-medium';
           if (!voiceId) throw new Error('No Piper voice configured');
           if (st && st.value === 'off') return;
           const qs = new URLSearchParams({ text: safeText, voice_id: voiceId, preset: 'wizard' });
@@ -1712,7 +1777,31 @@
           currentTtsAudio = null;
           currentTtsUrl = null;
         }
+        // Toggle Piper controls visibility
+        const pc = document.getElementById('piper-controls');
+        if (pc) pc.style.display = (speechToggleEl.value === 'piper-fx' || speechToggleEl.value === 'piper-raw') ? 'inline-flex' : 'none';
       });
+      // Initial show/hide based on restored value
+      const pc0 = document.getElementById('piper-controls');
+      if (pc0) pc0.style.display = (speechToggleEl.value === 'piper-fx' || speechToggleEl.value === 'piper-raw') ? 'inline-flex' : 'none';
+    }
+
+    // Restore persisted Piper voice id
+    try { window.PIPER_VOICE_ID = (localStorage.getItem('piperVoiceId') || '').trim(); } catch (e) {}
+    // Load local Piper voices into the picker
+    loadPiperVoices();
+
+    // Piper voice picker events
+    const piperSel = document.getElementById('piper-voice');
+    const piperReload = document.getElementById('piper-voice-reload');
+    if (piperSel) {
+      piperSel.addEventListener('change', () => {
+        window.PIPER_VOICE_ID = piperSel.value;
+        try { localStorage.setItem('piperVoiceId', piperSel.value); } catch (e) {}
+      });
+    }
+    if (piperReload) {
+      piperReload.addEventListener('click', () => loadPiperVoices());
     }
 
     document.getElementById('send-btn').onclick = () => sendMessage();
