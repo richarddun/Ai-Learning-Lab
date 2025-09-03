@@ -63,6 +63,61 @@ logger = logging.getLogger("uvicorn.error")
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 
+@app.on_event("startup")
+def _warm_piper_voices():
+    """Optionally warm-load Piper voices and pre-initialize kernels.
+
+    Controlled via env:
+      - PIPER_WARM_VOICES: comma-separated list of voice ids or paths.
+        Special values: 'ALL_LOCAL' to warm all downloaded voices, 'FIRST_LOCAL' to warm the first.
+      - PIPER_PREWARM_TEXT: small phrase to synthesize for warming (default 'Ready.').
+      - PIPER_WARM_PREVIEW: '1' to actually run a tiny synth to warm kernels (default '1').
+    """
+    try:
+        from backend.piper_utils.voice_manager import (
+            get_voice,
+            ensure_voice_local,
+            list_local_voice_ids,
+        )
+        from piper.config import SynthesisConfig as _SC
+    except Exception:
+        # Piper optional dependency may not be installed; skip
+        return
+
+    voices_spec = os.getenv("PIPER_WARM_VOICES", "").strip()
+    if not voices_spec:
+        return
+    if voices_spec == "ALL_LOCAL":
+        voice_ids = list_local_voice_ids()
+    elif voices_spec == "FIRST_LOCAL":
+        ids = list_local_voice_ids()
+        voice_ids = ids[:1]
+    else:
+        voice_ids = [v.strip() for v in voices_spec.split(",") if v.strip()]
+    if not voice_ids:
+        return
+    prewarm_text = os.getenv("PIPER_PREWARM_TEXT", "Ready.")
+    do_preview = os.getenv("PIPER_WARM_PREVIEW", "1").strip() not in ("0", "false", "no", "off")
+
+    app_logger.info("[warm] Piper voices: %s (preview=%s)", ", ".join(voice_ids), do_preview)
+    for vid in voice_ids:
+        try:
+            ensure_voice_local(vid)
+            v = get_voice(vid)
+            if do_preview:
+                try:
+                    # Run a tiny synth and consume first chunk to warm kernels
+                    try:
+                        it = v.synthesize(prewarm_text, _SC())
+                    except TypeError:
+                        it = v.synthesize(_SC(), prewarm_text)
+                    _ = next(iter(it))
+                except Exception:
+                    pass
+        except Exception as e:
+            app_logger.warning("[warm] Piper voice '%s' failed to warm: %s", vid, e)
+
+
 class ChatRequest(BaseModel):
     """Request body for chat interactions."""
 

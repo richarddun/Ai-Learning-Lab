@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+import os
 from collections import OrderedDict
 import json
 from typing import Tuple
@@ -9,7 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 VOICES_DIR = REPO_ROOT / "voices"
 VOICES_DIR.mkdir(parents=True, exist_ok=True)
 
-_MAX_LOADED = 2
+_MAX_LOADED = int(os.getenv("PIPER_MAX_LOADED", "2"))
 _loaded: "OrderedDict[str, object]" = OrderedDict()
 
 
@@ -102,7 +103,33 @@ def _load_piper_voice(model_path: Path):
         from piper.voice import PiperVoice
     except Exception as e:
         raise RuntimeError("piper-tts is not installed") from e
-    return PiperVoice.load(str(model_path))
+    # Try to pass optional performance hints if supported by library version
+    kwargs = {}
+    try:
+        import inspect as _inspect
+        params = set(_inspect.signature(PiperVoice.load).parameters.keys())
+        # Common optional args across versions
+        if "use_cuda" in params:
+            use_cuda = os.getenv("PIPER_USE_CUDA", "0").strip() in ("1", "true", "yes", "on")
+            kwargs["use_cuda"] = use_cuda
+        if "use_mmap" in params:
+            use_mmap = os.getenv("PIPER_USE_MMAP", "1").strip() not in ("0", "false", "no", "off")
+            kwargs["use_mmap"] = use_mmap
+        # Threading controls (fallback to environment OpenMP if not supported)
+        threads = os.getenv("PIPER_THREADS")
+        if threads and threads.isdigit():
+            t = int(threads)
+            for name in ("threads", "intra_op_num_threads"):
+                if name in params:
+                    kwargs[name] = t
+                    break
+    except Exception:
+        pass
+    try:
+        return PiperVoice.load(str(model_path), **kwargs)
+    except TypeError:
+        # If kwargs not supported, load without them
+        return PiperVoice.load(str(model_path))
 
 
 def get_voice(voice_key: str):
