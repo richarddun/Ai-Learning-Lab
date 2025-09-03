@@ -21,6 +21,7 @@
   <form id="trialForm">
     <label>Voice ID or local .onnx path <input name="voice_id" placeholder="en_GB-kathleen-high or ./voices/en_GB-kathleen-high.onnx" required /></label>
     <label>Preset <select name="preset"><option>wizard</option><option>robot</option><option>fairy</option><option>goblin</option><option>none</option></select></label>
+    <label><input type="checkbox" name="bypass_fx" /> Bypass FX (send raw Piper audio)</label>
     <details><summary>Advanced (Piper + FX params)</summary>
       <label>speaker_id (int, optional) <input name="speaker_id" /></label>
       <label>length_scale (e.g., 0.96) <input name="length_scale" value="0.96" /></label>

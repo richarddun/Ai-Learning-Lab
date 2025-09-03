@@ -13,6 +13,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import httpx
 from dotenv import dotenv_values
+import uuid
+import time
+from logging.handlers import RotatingFileHandler
 from backend.services.secrets import get_secret as get_db_secret, set_secret as set_db_secret, delete_secret as del_db_secret
 from backend.services.openrouter import (
     chat_with_openrouter,
@@ -35,6 +38,27 @@ def get_db():
 
 app = FastAPI(title="AI Learning Lab")
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
+
+# Configure app logger with env overrides
+_lvl = os.getenv("AI_LAB_LOG_LEVEL", "INFO").upper()
+_lvl_num = getattr(logging, _lvl, logging.INFO)
+app_logger = logging.getLogger("ai_lab")
+app_logger.setLevel(_lvl_num)
+if not app_logger.handlers:
+    _sh = logging.StreamHandler()
+    _sh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    app_logger.addHandler(_sh)
+_log_file = os.getenv("AI_LAB_LOG_FILE")
+if _log_file and not any(isinstance(h, RotatingFileHandler) for h in app_logger.handlers):
+    try:
+        _fh = RotatingFileHandler(_log_file, maxBytes=5 * 1024 * 1024, backupCount=3)
+        _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        _fh.setLevel(_lvl_num)
+        app_logger.addHandler(_fh)
+    except Exception:
+        # Fallback to stderr only if file can't be opened
+        pass
+
 logger = logging.getLogger("uvicorn.error")
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
@@ -1085,6 +1109,7 @@ def piper_tts_stream(
     noise_scale: Optional[str] = Form("0.60"),
     noise_w: Optional[str] = Form("0.8"),
     fx_overrides: Optional[str] = Form(None),
+    bypass_fx: Optional[str] = Form(None),
 ):
     """Stream WAV audio synthesized by Piper and processed with pedalboard FX.
 
@@ -1113,6 +1138,9 @@ def piper_tts_stream(
     # Load voice and sample rate
     voice = get_voice(voice_id)
     sr = read_sample_rate_from_sidecar(ensure_voice_local(voice_id))
+    rid = uuid.uuid4().hex[:8]
+    app_logger.info("/tts/stream start rid=%s voice_id=%s preset=%s text_len=%d sr=%d",
+                    rid, voice_id, preset, len(text or ""), sr)
 
     # Build FX board for this request
     over = _json.loads(fx_overrides) if fx_overrides else {}
@@ -1166,7 +1194,18 @@ def piper_tts_stream(
         elif k == "speaker_id" and "speaker" in _params:
             _cfg_kwargs["speaker"] = v
 
+    # Parse bypass flag: true if explicitly set ("on", "1", "true")
+    def _to_bool(v: Optional[str], default: bool = False) -> bool:
+        if v is None:
+            return default
+        s = str(v).strip().lower()
+        return s in ("1", "true", "on", "yes")
+
+    _bypass_fx = _to_bool(bypass_fx, default=False)
+
     cfg = SynthesisConfig(**_cfg_kwargs)
+    if app_logger.isEnabledFor(logging.DEBUG):
+        app_logger.debug("rid=%s cfg=%s bypass_fx=%s", rid, _cfg_kwargs, _bypass_fx)
 
     def gen():
         # Emit header first
@@ -1178,6 +1217,7 @@ def piper_tts_stream(
             iterator = voice.synthesize(text, cfg)
         except TypeError:
             iterator = voice.synthesize(cfg, text)
+        app_logger.info("rid=%s synth-begin bypass_fx=%s", rid, _bypass_fx)
 
         # Adapter: normalize various chunk shapes to PCM16 bytes
         def _chunk_to_pcm16_bytes(ch):
@@ -1214,28 +1254,44 @@ def piper_tts_stream(
             # Unsupported chunk content
             return b""
 
+        chunk_count = 0
+        total_pcm = 0
         try:
             for chunk in iterator:
                 pcm = _chunk_to_pcm16_bytes(chunk)
                 if not pcm:
+                    # Log the first few empty/unsupported chunks at DEBUG
+                    if chunk_count < 3 and app_logger.isEnabledFor(logging.DEBUG):
+                        app_logger.debug("rid=%s chunk=%d empty/unsupported type=%s attrs=%s",
+                                         rid, chunk_count + 1, type(chunk).__name__,
+                                         [a for a in ("audio","audio_bytes","data","samples") if hasattr(chunk, a)])
+                    chunk_count += 1
                     continue
-                f32 = pcm16_to_float32(pcm)
-                last_block = f32
-                f32_fx = apply_fx_block(board, f32, sr)
-                out = float32_to_pcm16(f32_fx)
+                if chunk_count < 3 and app_logger.isEnabledFor(logging.DEBUG):
+                    app_logger.debug("rid=%s chunk=%d raw_pcm=%dB", rid, chunk_count + 1, len(pcm))
+                if _bypass_fx:
+                    out = pcm
+                else:
+                    f32 = pcm16_to_float32(pcm)
+                    last_block = f32
+                    f32_fx = apply_fx_block(board, f32, sr)
+                    out = float32_to_pcm16(f32_fx)
                 if out:
                     yielded_any = True
+                    total_pcm += len(out)
+                    chunk_count += 1
                     yield out
         except Exception as e:
-            logger.exception("/tts/stream: generator failed: %s", e)
+            app_logger.exception("/tts/stream rid=%s: generator failed: %s", rid, e)
         finally:
             # Ensure we flush FX tail if any
             try:
-                if last_block is not None:
+                if (last_block is not None) and (not _bypass_fx):
                     tail = apply_fx_block(board, last_block * 0, sr)
                     tail_b = float32_to_pcm16(tail)
                     if tail_b:
                         yielded_any = True
+                        total_pcm += len(tail_b)
                         yield tail_b
             except Exception:
                 pass
@@ -1246,10 +1302,15 @@ def piper_tts_stream(
                     dur_s = 0.25
                     n = int(sr * dur_s)
                     silence = _np.zeros((1, n), dtype=_np.float32)
-                    yield float32_to_pcm16(silence)
+                    sil = float32_to_pcm16(silence)
+                    total_pcm += len(sil)
+                    yield sil
                 except Exception:
                     # Last resort: 1000 bytes of zeroed PCM16
-                    yield b"\x00" * 1000
+                    pad = b"\x00" * 1000
+                    total_pcm += len(pad)
+                    yield pad
+            app_logger.info("rid=%s synth-end chunks=%d bytes=%d yielded_any=%s", rid, chunk_count, total_pcm, yielded_any)
 
     headers = {
         "X-Accel-Buffering": "no",  # prevent nginx proxy buffering
