@@ -1047,14 +1047,31 @@ def import_history(user_id: int, req: ImportRequest, db: Session = Depends(get_d
 # We register these at the end to avoid import issues when optional deps are missing.
 
 def _wav_header(sample_rate: int, channels: int = 1, sampwidth: int = 2) -> bytes:
-    import io, wave
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as w:
-        w.setnchannels(channels)
-        w.setsampwidth(sampwidth)
-        w.setframerate(sample_rate)
-        w.writeframes(b"")
-    return buf.getvalue()
+    """Return a stream-friendly WAV header.
+
+    We advertise a very large data size (0xFFFFFFFF) so decoders don't
+    assume zero-length audio when streaming without a known Content-Length.
+    """
+    import struct
+
+    byte_rate = sample_rate * channels * sampwidth
+    block_align = channels * sampwidth
+    data_size = 0xFFFFFFFF  # unknown/streaming
+    riff_size = (data_size + 36) & 0xFFFFFFFF
+
+    # RIFF chunk descriptor
+    header = [
+        b"RIFF",
+        struct.pack("<I", riff_size),
+        b"WAVE",
+        # fmt subchunk (PCM)
+        b"fmt ",
+        struct.pack("<IHHIIHH", 16, 1, channels, sample_rate, byte_rate, block_align, sampwidth * 8),
+        # data subchunk header with max size
+        b"data",
+        struct.pack("<I", data_size),
+    ]
+    return b"".join(header)
 
 
 @app.post("/tts/stream")
@@ -1087,7 +1104,7 @@ def piper_tts_stream(
             read_sample_rate_from_sidecar,
         )
         # Piper 1 API (import lazily to avoid failing app startup when missing)
-        from piper.voice import SynthesisConfig
+        from piper.config import SynthesisConfig
     except Exception as e:
         # Optional deps missing; surface a 503 so clients can fallback
         raise HTTPException(status_code=503, detail=f"Piper/FX not available: {e}")
@@ -1152,14 +1169,16 @@ def piper_tts_stream(
     cfg = SynthesisConfig(**_cfg_kwargs)
 
     def gen():
-        # Header first for streaming WAV
+        # Emit header first
         yield _wav_header(sr)
         last_block = None
+        yielded_any = False
         # piper-tts APIs differ on argument order; try text-first, then config-first
         try:
             iterator = voice.synthesize(text, cfg)
         except TypeError:
             iterator = voice.synthesize(cfg, text)
+
         # Adapter: normalize various chunk shapes to PCM16 bytes
         def _chunk_to_pcm16_bytes(ch):
             try:
@@ -1192,24 +1211,53 @@ def piper_tts_stream(
             # Tuple style: (audio, ...)
             if isinstance(ch, tuple) and ch:
                 return _chunk_to_pcm16_bytes(ch[0])
-            # Fallback
+            # Unsupported chunk content
+            return b""
+
+        try:
+            for chunk in iterator:
+                pcm = _chunk_to_pcm16_bytes(chunk)
+                if not pcm:
+                    continue
+                f32 = pcm16_to_float32(pcm)
+                last_block = f32
+                f32_fx = apply_fx_block(board, f32, sr)
+                out = float32_to_pcm16(f32_fx)
+                if out:
+                    yielded_any = True
+                    yield out
+        except Exception as e:
+            logger.exception("/tts/stream: generator failed: %s", e)
+        finally:
+            # Ensure we flush FX tail if any
             try:
-                return bytes(ch)
+                if last_block is not None:
+                    tail = apply_fx_block(board, last_block * 0, sr)
+                    tail_b = float32_to_pcm16(tail)
+                    if tail_b:
+                        yielded_any = True
+                        yield tail_b
             except Exception:
-                raise AttributeError("Unsupported Piper chunk shape; missing audio bytes")
+                pass
+            # If nothing was produced, emit a short silence to avoid empty WAVs
+            if not yielded_any:
+                try:
+                    import numpy as _np
+                    dur_s = 0.25
+                    n = int(sr * dur_s)
+                    silence = _np.zeros((1, n), dtype=_np.float32)
+                    yield float32_to_pcm16(silence)
+                except Exception:
+                    # Last resort: 1000 bytes of zeroed PCM16
+                    yield b"\x00" * 1000
 
-        for chunk in iterator:
-            pcm = _chunk_to_pcm16_bytes(chunk)
-            f32 = pcm16_to_float32(pcm)
-            last_block = f32
-            f32_fx = apply_fx_block(board, f32, sr)
-            yield float32_to_pcm16(f32_fx)
-        # Flush FX tail if any
-        if last_block is not None:
-            tail = apply_fx_block(board, last_block * 0, sr)
-            yield float32_to_pcm16(tail)
-
-    return StreamingResponse(gen(), media_type="audio/wav")
+    headers = {
+        "X-Accel-Buffering": "no",  # prevent nginx proxy buffering
+        "Cache-Control": "no-store, no-transform",
+        "Pragma": "no-cache",
+        "Accept-Ranges": "none",
+    }
+    return StreamingResponse(gen(), media_type="audio/wav", headers=headers)
 
 @app.get("/admin", response_class=HTMLResponse)
 def admin_page(request: Request):
