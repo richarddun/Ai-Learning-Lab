@@ -52,16 +52,9 @@ Notes
 - Enter a prompt, pick a style/size, and each result appears as an item in a chat-like feed with a download button.
 - Files are saved under `frontend/assets/characters/generated/img-*.png` so they're available in the avatar gallery and download endpoint.
 
-### Optional: HTTPS for Voice Streaming
+### Note : Mobile browsers require SSL for microphone access
 
-Some browsers require HTTPS for microphone access. A local Certificate Authority is bundled in `certs/ca.cert.pem`.
-Import this certificate into your system or browser trust store, then start the server with SSL:
-
-```bash
-python backend/run_ssl.py
-```
-
-This will serve the app at `https://localhost:8000` using the trusted certificate.
+- You'll need to get set up with letsencrypt at the least to cover this use-case
 
 ## Testing
 
