@@ -1228,6 +1228,28 @@ def piper_tts_stream(
 
             if isinstance(ch, (bytes, bytearray, memoryview)):
                 return bytes(ch)
+            # Top-level numpy array
+            if _np is not None and isinstance(ch, _np.ndarray):
+                if ch.dtype == _np.int16:
+                    return ch.tobytes()
+                if ch.dtype == _np.float32:
+                    i16 = _np.clip(ch, -1.0, 1.0)
+                    i16 = (i16 * 32767.0).astype(_np.int16)
+                    return i16.tobytes()
+                # Attempt best-effort cast
+                try:
+                    arr = _np.asarray(ch, dtype=_np.float32)
+                    arr = _np.clip(arr, -1.0, 1.0)
+                    return (arr * 32767.0).astype(_np.int16).tobytes()
+                except Exception:
+                    return b""
+            # Top-level Python list
+            if isinstance(ch, list) and _np is not None:
+                arr = _np.asarray(ch)
+                if arr.dtype != _np.int16:
+                    arr = _np.clip(arr, -1.0, 1.0)
+                    arr = (arr * 32767.0).astype(_np.int16)
+                return arr.tobytes()
             # Common attributes across versions
             for attr in ("audio", "audio_bytes", "data", "samples"):
                 if hasattr(ch, attr):
