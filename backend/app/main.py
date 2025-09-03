@@ -1225,6 +1225,15 @@ def piper_tts_stream(
                 import numpy as _np
             except Exception:
                 _np = None
+            try:
+                from collections.abc import Mapping as _Mapping
+            except Exception:
+                _Mapping = None
+            try:
+                from dataclasses import is_dataclass as _is_dataclass, asdict as _asdict
+            except Exception:
+                _is_dataclass = None
+                _asdict = None
 
             if isinstance(ch, (bytes, bytearray, memoryview)):
                 return bytes(ch)
@@ -1250,8 +1259,11 @@ def piper_tts_stream(
                     arr = _np.clip(arr, -1.0, 1.0)
                     arr = (arr * 32767.0).astype(_np.int16)
                 return arr.tobytes()
-            # Common attributes across versions
-            for attr in ("audio", "audio_bytes", "data", "samples"):
+            # Common attributes across versions (expanded)
+            for attr in (
+                "audio", "audio_bytes", "data", "samples",
+                "pcm", "pcm16", "buffer", "bytes", "frames",
+            ):
                 if hasattr(ch, attr):
                     val = getattr(ch, attr)
                     if isinstance(val, (bytes, bytearray, memoryview)):
@@ -1270,6 +1282,33 @@ def piper_tts_stream(
                             arr = _np.clip(arr, -1.0, 1.0)
                             arr = (arr * 32767.0).astype(_np.int16)
                         return arr.tobytes()
+            # Mapping-style payloads
+            if _Mapping is not None and isinstance(ch, _Mapping):
+                for key in ("audio", "audio_bytes", "data", "samples", "pcm", "pcm16", "bytes"):
+                    if key in ch:
+                        return _chunk_to_pcm16_bytes(ch[key])
+                # Fallback: first bytes/array-like value
+                for v in ch.values():
+                    b = _chunk_to_pcm16_bytes(v)
+                    if b:
+                        return b
+            # Dataclass or general object with __dict__
+            try:
+                if _is_dataclass and _is_dataclass(ch) and _asdict:
+                    d = _asdict(ch)
+                else:
+                    d = vars(ch)
+                if isinstance(d, dict):
+                    # Prefer known keys, else first convertible value
+                    for key in ("audio", "audio_bytes", "data", "samples", "pcm", "bytes"):
+                        if key in d:
+                            return _chunk_to_pcm16_bytes(d[key])
+                    for v in d.values():
+                        b = _chunk_to_pcm16_bytes(v)
+                        if b:
+                            return b
+            except Exception:
+                pass
             # Tuple style: (audio, ...)
             if isinstance(ch, tuple) and ch:
                 return _chunk_to_pcm16_bytes(ch[0])
@@ -1284,9 +1323,25 @@ def piper_tts_stream(
                 if not pcm:
                     # Log the first few empty/unsupported chunks at DEBUG
                     if chunk_count < 3 and app_logger.isEnabledFor(logging.DEBUG):
-                        app_logger.debug("rid=%s chunk=%d empty/unsupported type=%s attrs=%s",
-                                         rid, chunk_count + 1, type(chunk).__name__,
-                                         [a for a in ("audio","audio_bytes","data","samples") if hasattr(chunk, a)])
+                        try:
+                            from collections.abc import Mapping as _Mapping
+                        except Exception:
+                            _Mapping = None
+                        attrs_checked = (
+                            "audio","audio_bytes","data","samples","pcm","pcm16","buffer","bytes","frames"
+                        )
+                        found_attrs = [a for a in attrs_checked if hasattr(chunk, a)]
+                        mapping_keys = list(chunk.keys())[:5] if (_Mapping and isinstance(chunk, _Mapping)) else []
+                        # Light dir dump (first 8 entries) to aid debugging
+                        dir_sample = []
+                        try:
+                            dir_sample = [n for n in dir(chunk) if not n.startswith('_')][:8]
+                        except Exception:
+                            pass
+                        app_logger.debug(
+                            "rid=%s chunk=%d empty/unsupported type=%s attrs=%s map_keys=%s dir=%s",
+                            rid, chunk_count + 1, type(chunk).__name__, found_attrs, mapping_keys, dir_sample,
+                        )
                     chunk_count += 1
                     continue
                 if chunk_count < 3 and app_logger.isEnabledFor(logging.DEBUG):
