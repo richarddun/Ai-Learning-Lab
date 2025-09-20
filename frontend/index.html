@@ -623,14 +623,25 @@
       const grid = avatarPicker.querySelector('#ap-grid');
       grid.innerHTML = 'Loading…';
       try {
-        const res = await fetch(`${API_BASE}/avatar-gallery/list`);
-        const data = res.ok ? await res.json() : { items: [] };
+        // Try current base first, then root as fallback (useful when backend isn't mounted under subpath)
+        const listUrls = [
+          `${API_BASE}/avatar-gallery/list`,
+          `/avatar-gallery/list`,
+        ];
+        let data = { items: [] };
+        for (const u of listUrls) {
+          try {
+            const res = await fetch(u);
+            if (res.ok) { data = await res.json(); break; }
+          } catch (_) { /* try next */ }
+        }
         const items = Array.isArray(data.items) ? data.items : [];
         grid.innerHTML = '';
         let used = 0;
         for (const it of items) {
           const fig = document.createElement('figure');
-          const img = document.createElement('img'); img.src = it.url; img.alt = it.name || 'avatar';
+          const resolvedUrl = resolveUrl(it.url);
+          const img = document.createElement('img'); img.src = resolvedUrl; img.alt = it.name || 'avatar';
           const cap = document.createElement('figcaption'); cap.textContent = it.name || '';
           fig.appendChild(img); fig.appendChild(cap);
           fig.onclick = () => {
@@ -638,9 +649,9 @@
               const avatarEl = characterDialog.querySelector('#cf-avatar');
               const imgEl = characterDialog.querySelector('#cf-avatar-img');
               const hint = characterDialog.querySelector('#cf-avatar-hint');
-              if (avatarEl) avatarEl.value = it.url;
-              if (imgEl) { imgEl.src = it.url; imgEl.style.display = 'block'; }
-              if (hint) hint.textContent = it.url;
+              if (avatarEl) avatarEl.value = resolvedUrl;
+              if (imgEl) { imgEl.src = resolvedUrl; imgEl.style.display = 'block'; }
+              if (hint) hint.textContent = resolvedUrl;
             } catch (e) {}
             closeAvatarPicker();
           };
@@ -648,23 +659,34 @@
           used++;
         }
         if (!used) {
-          // Fallback: scrape the HTML gallery for <img src="/assets/...">
+          // Fallback: scrape the HTML gallery for <img src="/assets/..."> (try base and root)
           try {
-            const h = await fetch(`${API_BASE}/avatar-gallery`).then(r => r.text());
+            let h = '';
+            const htmlUrls = [
+              `${API_BASE}/avatar-gallery`,
+              `/avatar-gallery`,
+            ];
+            for (const u of htmlUrls) {
+              try {
+                const r = await fetch(u);
+                if (r.ok) { h = await r.text(); break; }
+              } catch (_) { /* try next */ }
+            }
             const urls = Array.from(h.matchAll(/<img[^>]+src=\"(\/assets\/characters[^\"]+)\"/g)).map(m => m[1]);
             if (urls.length) {
               for (const u of urls) {
                 const fig = document.createElement('figure');
-                const img = document.createElement('img'); img.src = u; img.alt = 'avatar';
+                const resolvedU = resolveUrl(u);
+                const img = document.createElement('img'); img.src = resolvedU; img.alt = 'avatar';
                 fig.appendChild(img);
                 fig.onclick = () => {
                   try {
                     const avatarEl = characterDialog.querySelector('#cf-avatar');
                     const imgEl = characterDialog.querySelector('#cf-avatar-img');
                     const hint = characterDialog.querySelector('#cf-avatar-hint');
-                    if (avatarEl) avatarEl.value = u;
-                    if (imgEl) { imgEl.src = u; imgEl.style.display = 'block'; }
-                    if (hint) hint.textContent = u;
+                    if (avatarEl) avatarEl.value = resolvedU;
+                    if (imgEl) { imgEl.src = resolvedU; imgEl.style.display = 'block'; }
+                    if (hint) hint.textContent = resolvedU;
                   } catch (e) {}
                   closeAvatarPicker();
                 };
