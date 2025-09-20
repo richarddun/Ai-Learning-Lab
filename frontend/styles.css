@@ -497,6 +497,37 @@ dialog[open] > form { animation: modal-pop 160ms ease-out; transform-origin: cen
   to { opacity: 1; transform: scale(1); }
 }
 
+/* Reusable modal form styling */
+.modal-form {
+  min-width: min(96vw, 560px);
+  max-width: 96vw;
+  background: #2a2a2a;
+  color: #e0e0e0;
+  border: 1px solid #666;
+  border-radius: 8px;
+  padding: 0.8rem;
+}
+.modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:0.5rem; }
+.modal-close { border:1px solid #666; background:#3a3a3a; color:#e0e0e0; border-radius:4px; padding:0.2rem 0.5rem; cursor:pointer; }
+.modal-inline { display:flex; align-items:center; justify-content:space-between; }
+.inline-actions { display:flex; gap:0.4rem; align-items:center; }
+.modal-actions { display:flex; gap:0.5rem; justify-content:flex-end; margin-top:0.8rem; }
+.modal-form label { display:block; margin: 0.25rem 0; }
+.modal-form input[type="text"],
+.modal-form textarea,
+.modal-form select { width:100%; box-sizing:border-box; }
+.modal-form input[type="text"], .modal-form textarea { padding:0.4rem; background:#1f1f1f; color:#e0e0e0; border:1px solid #555; border-radius:4px; }
+.modal-form select { padding:0.35rem; background:#1f1f1f; color:#e0e0e0; border:1px solid #555; border-radius:4px; margin:0.25rem 0 0.6rem 0; }
+.flex-1 { flex: 1; }
+.row-narrow { margin: 0.25rem 0; }
+.modal-form button { border:1px solid #666; background:#4a4a4a; color:#fff; border-radius:4px; padding:0.4rem 0.8rem; cursor:pointer; }
+.modal-form button.secondary { background:#3a3a3a; color:#e0e0e0; }
+.modal-form button:hover { background:#555; }
+
+.avatar-preview { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem; }
+.avatar-preview img { width:72px; height:72px; object-fit:cover; border:1px solid #555; border-radius:8px; background:#333; display:none; }
+.avatar-preview .hint { opacity:0.8; }
+
 #conversations .convo-thumb {
   width: 48px;
   height: 48px;

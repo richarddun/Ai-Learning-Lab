@@ -373,47 +373,47 @@
     const characterDialog = document.createElement('dialog');
     characterDialog.id = 'character-dialog';
     characterDialog.innerHTML = `
-      <form method="dialog" id="character-form" style="min-width:min(96vw,560px);max-width:96vw;background:#2a2a2a;color:#e0e0e0;border:1px solid #666;border-radius:8px;padding:0.8rem;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+      <form method="dialog" id="character-form" class="modal-form">
+        <div class="modal-header">
           <strong id="char-form-title">New Character</strong>
-          <button value="cancel" title="Close" style="border:1px solid #666;background:#3a3a3a;color:#e0e0e0;border-radius:4px;padding:0.2rem 0.5rem;cursor:pointer">✖</button>
+          <button value="cancel" title="Close" class="modal-close">✖</button>
         </div>
         <label>Name</label>
-        <input id="cf-name" type="text" placeholder="e.g., Luna" style="width:100%;margin-bottom:0.5rem"/>
-        <div style="display:flex; align-items:center; justify-content:space-between;">
+        <input id="cf-name" type="text" placeholder="e.g., Luna" />
+        <div class="modal-inline">
           <label>System Prompt</label>
           <button id="cf-prompt-wizard" type="button" class="secondary" title="Prompt Wizard">🪄 Generate</button>
         </div>
-        <textarea id="cf-prompt" rows="4" placeholder="Describe persona and behavior" style="width:100%;margin-bottom:0.5rem"></textarea>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin:0.25rem 0;">
+        <textarea id="cf-prompt" rows="4" placeholder="Describe persona and behavior"></textarea>
+        <div class="modal-inline">
           <label>Avatar</label>
-          <div style="display:flex; gap:0.4rem;">
+          <div class="inline-actions">
             <button id="cf-avatar-choose" type="button" class="secondary" title="Choose from gallery">Choose Existing</button>
             <button id="cf-avatar-generate" type="button" class="secondary" title="Generate avatar">Generate</button>
             <button id="cf-avatar-clear" type="button" class="secondary" title="Clear avatar">Clear</button>
           </div>
         </div>
-        <div id="cf-avatar-preview" style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem;">
-          <img id="cf-avatar-img" alt="avatar preview" style="width:72px;height:72px;object-fit:cover;border:1px solid #555;border-radius:8px;background:#333; display:none;" />
-          <span id="cf-avatar-hint" style="opacity:0.8;">No avatar selected</span>
+        <div id="cf-avatar-preview" class="avatar-preview">
+          <img id="cf-avatar-img" alt="avatar preview" />
+          <span id="cf-avatar-hint" class="hint">No avatar selected</span>
         </div>
         <input id="cf-avatar" type="hidden" />
-        <div style="display:flex; gap:0.5rem; align-items:center;">
-          <label style="flex:1">Voice</label>
+        <div class="modal-inline">
+          <label class="flex-1">Voice</label>
           <button id="cf-voices-reload" type="button" class="icon-btn" title="Reload voices">⟳</button>
         </div>
-        <div style="display:flex; gap:0.4rem; align-items:center; margin: 0.25rem 0;">
-          <input id="cf-voice-search" type="text" placeholder="Search voices (name, category)" style="flex:1;" />
+        <div class="inline-actions row-narrow">
+          <input id="cf-voice-search" type="text" placeholder="Search voices (name, category)" class="flex-1" />
           <button id="cf-voice-search-btn" type="button" title="Search">Search</button>
         </div>
-        <select id="cf-voice" style="width:100%; margin: 0.25rem 0 0.6rem 0"></select>
-        <div style="display:flex; gap:0.4rem; align-items:center;">
-          <input id="cf-preview-text" type="text" value="Hi, I'm your learning buddy. How can I help?" style="flex:1" />
+        <select id="cf-voice"></select>
+        <div class="inline-actions">
+          <input id="cf-preview-text" type="text" value="Hi, I'm your learning buddy. How can I help?" class="flex-1" />
           <button id="cf-voice-preview" type="button" title="Preview in selected voice">Preview</button>
         </div>
-        <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.8rem;">
-          <button id="cf-cancel" type="button" class="secondary" style="border:1px solid #666;background:#3a3a3a;color:#e0e0e0;border-radius:4px;padding:0.4rem 0.8rem;cursor:pointer">Cancel</button>
-          <button id="cf-save" type="button" style="border:1px solid #666;background:#4a4a4a;color:#fff;border-radius:4px;padding:0.4rem 0.8rem;cursor:pointer">Save</button>
+        <div class="modal-actions">
+          <button id="cf-cancel" type="button" class="secondary">Cancel</button>
+          <button id="cf-save" type="button">Save</button>
         </div>
       </form>`;
     document.body.appendChild(characterDialog);
