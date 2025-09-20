@@ -627,7 +627,7 @@
         const data = res.ok ? await res.json() : { items: [] };
         const items = Array.isArray(data.items) ? data.items : [];
         grid.innerHTML = '';
-        if (!items.length) { grid.textContent = 'No avatars found.'; }
+        let used = 0;
         for (const it of items) {
           const fig = document.createElement('figure');
           const img = document.createElement('img'); img.src = it.url; img.alt = it.name || 'avatar';
@@ -645,6 +645,35 @@
             closeAvatarPicker();
           };
           grid.appendChild(fig);
+          used++;
+        }
+        if (!used) {
+          // Fallback: scrape the HTML gallery for <img src="/assets/...">
+          try {
+            const h = await fetch(`${API_BASE}/avatar-gallery`).then(r => r.text());
+            const urls = Array.from(h.matchAll(/<img[^>]+src=\"(\/assets\/characters[^\"]+)\"/g)).map(m => m[1]);
+            if (urls.length) {
+              for (const u of urls) {
+                const fig = document.createElement('figure');
+                const img = document.createElement('img'); img.src = u; img.alt = 'avatar';
+                fig.appendChild(img);
+                fig.onclick = () => {
+                  try {
+                    const avatarEl = characterDialog.querySelector('#cf-avatar');
+                    const imgEl = characterDialog.querySelector('#cf-avatar-img');
+                    const hint = characterDialog.querySelector('#cf-avatar-hint');
+                    if (avatarEl) avatarEl.value = u;
+                    if (imgEl) { imgEl.src = u; imgEl.style.display = 'block'; }
+                    if (hint) hint.textContent = u;
+                  } catch (e) {}
+                  closeAvatarPicker();
+                };
+                grid.appendChild(fig);
+              }
+              return;
+            }
+          } catch (_) {}
+          grid.textContent = 'No avatars found.';
         }
       } catch (e) {
         grid.textContent = 'Failed to load avatars';

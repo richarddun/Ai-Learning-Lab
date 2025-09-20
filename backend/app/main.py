@@ -1063,6 +1063,30 @@ async def list_voices(q: Optional[str] = None, db: Session = Depends(get_db)):
         client = ElevenLabsTTSClient(api_key=api_key)
         raw_voices = client.list_voices(q)
 
+        # Fallback substring filter so search behaves as users expect
+        # across name/category/id/labels/description.
+        if q:
+            ql = q.strip().lower()
+            def get(v, key, alt=None):
+                if isinstance(v, dict):
+                    return v.get(key) or (v.get(alt) if alt else None)
+                return getattr(v, key, None) or (getattr(v, alt, None) if alt else None)
+            def any_match(v) -> bool:
+                fields = []
+                fields.append(str(get(v, "name") or ""))
+                fields.append(str(get(v, "category") or ""))
+                fields.append(str(get(v, "voice_id", "id") or ""))
+                # Some SDKs expose labels/description differently
+                labels = get(v, "labels") or {}
+                if isinstance(labels, dict):
+                    fields.extend([str(k) for k in labels.keys()])
+                    fields.extend([str(val) for val in labels.values()])
+                desc = get(v, "description") or ""
+                if desc: fields.append(str(desc))
+                text = " \n ".join(fields).lower()
+                return ql in text
+            raw_voices = [v for v in (raw_voices or []) if any_match(v)]
+
         def get(v, key, alt=None):
             # Handles object or dict
             if isinstance(v, dict):
