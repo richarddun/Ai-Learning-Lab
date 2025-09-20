@@ -513,6 +513,62 @@
         const txt = (characterDialog.querySelector('#cf-preview-text')?.value || '').trim() || 'Hello!';
         previewVoice(vid, txt);
       }
+      if (e.target && e.target.id === 'cf-avatar-generate') {
+        (async () => {
+          const btn = characterDialog.querySelector('#cf-avatar-generate');
+          const nameEl = characterDialog.querySelector('#cf-name');
+          const promptEl = characterDialog.querySelector('#cf-prompt');
+          const avatarEl = characterDialog.querySelector('#cf-avatar');
+          const voiceEl = characterDialog.querySelector('#cf-voice');
+          const name = (nameEl?.value || '').trim();
+          const sysPrompt = (promptEl?.value || '');
+          const voiceId = (voiceEl?.value || '').trim();
+          if (!name) { alert('Please provide a character name before generating an avatar.'); return; }
+          try {
+            btn.disabled = true; const old = btn.textContent; btn.textContent = 'Generating…';
+            let ch = editingCharacter;
+            if (!ch) {
+              // Create the character first (without starting a conversation)
+              const res = await fetch(`${API_BASE}/characters`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, system_prompt: sysPrompt, avatar: (avatarEl?.value || '').trim(), voice_id: voiceId })
+              });
+              if (!res.ok) throw new Error('Create character failed');
+              ch = await res.json();
+              editingCharacter = ch;
+              // Refresh list for grid
+              await loadCharacters();
+            }
+            // Request avatar generation; include system prompt for context
+            const res2 = await fetch(`${API_BASE}/characters/${ch.id}/avatar/generate`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ include_system_prompt: true })
+            });
+            if (!res2.ok) {
+              const t = await res2.text().catch(() => '');
+              throw new Error(t || `Avatar generation failed (${res2.status})`);
+            }
+            const data = await res2.json();
+            const url = data.avatar || '';
+            if (url) {
+              if (avatarEl) avatarEl.value = url;
+              try {
+                // Update local character cache and landing grid
+                if (Array.isArray(characters)) {
+                  const i = characters.findIndex(c => String(c.id) === String(ch.id));
+                  if (i >= 0) characters[i].avatar = url;
+                }
+                renderCharactersLanding();
+              } catch (e) {}
+            }
+          } catch (err) {
+            console.error('Avatar generation failed', err);
+            alert('Avatar generation failed. Ensure OpenAI/OpenRouter key is set in Settings and try again.');
+          } finally {
+            try { btn.textContent = 'Generate'; btn.disabled = false; } catch {}
+          }
+        })();
+      }
     });
     document.addEventListener('keydown', (e) => {
       if (characterDialog.hasAttribute('open') && e.key === 'Enter') {
