@@ -491,7 +491,14 @@ body {
 /* Generic dialog cleanup + open animation */
 dialog { border: none; padding: 0; background: transparent; }
 dialog::backdrop { background: rgba(0,0,0,0.55); backdrop-filter: blur(1px); }
-dialog[open] > form { animation: modal-pop 160ms ease-out; transform-origin: center; }
+/* Constrain dialog content to viewport on mobile; allow internal scroll */
+dialog[open] { max-width: 96vw; max-height: 92dvh; }
+dialog[open] > form {
+  animation: modal-pop 160ms ease-out;
+  transform-origin: center;
+  max-height: 88dvh;
+  overflow: auto;
+}
 @keyframes modal-pop {
   from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
@@ -527,6 +534,15 @@ dialog[open] > form { animation: modal-pop 160ms ease-out; transform-origin: cen
 .avatar-preview { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem; }
 .avatar-preview img { width:72px; height:72px; object-fit:cover; border:1px solid #555; border-radius:8px; background:#333; display:none; }
 .avatar-preview .hint { opacity:0.8; }
+
+/* Tighter modal layout on small screens */
+@media (max-width: 640px) {
+  .modal-form { min-width: 92vw; padding: 0.6rem; border-radius: 10px; }
+  .modal-inline { flex-direction: column; align-items: stretch; gap: 0.35rem; }
+  .inline-actions { flex-wrap: wrap; }
+  .modal-actions { flex-wrap: wrap; }
+  dialog[open] > form { max-height: 86dvh; }
+}
 
 #conversations .convo-thumb {
   width: 48px;

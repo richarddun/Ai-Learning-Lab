@@ -402,10 +402,7 @@
           <label class="flex-1">Voice</label>
           <button id="cf-voices-reload" type="button" class="icon-btn" title="Reload voices">⟳</button>
         </div>
-        <div class="inline-actions row-narrow">
-          <input id="cf-voice-search" type="text" placeholder="Search voices (name, category)" class="flex-1" />
-          <button id="cf-voice-search-btn" type="button" title="Search">Search</button>
-        </div>
+        <!-- Voice search removed: ElevenLabs voice slots are fixed -->
         <select id="cf-voice"></select>
         <div class="inline-actions">
           <input id="cf-preview-text" type="text" value="Hi, I'm your learning buddy. How can I help?" class="flex-1" />
@@ -455,10 +452,9 @@
       }
       if (selected) sel.value = selected;
     }
-    async function fetchVoices(term) {
+    async function fetchVoices() {
       try {
-        const url = term ? `${API_BASE}/tts/voices?q=${encodeURIComponent(term)}` : `${API_BASE}/tts/voices`;
-        const res = await fetch(url);
+        const res = await fetch(`${API_BASE}/tts/voices`);
         if (!res.ok) throw new Error(`voices http ${res.status}`);
         const data = await res.json();
         const list = Array.isArray(data.voices) ? data.voices : [];
@@ -467,7 +463,7 @@
         for (const v of list) { if (v.voice_id) window.__voiceMap[v.voice_id] = v.name || v.voice_id; }
         fillVoiceSelect(characterDialog.querySelector('#cf-voice'), characterDialog.querySelector('#cf-voice').value);
       } catch (e) {
-        console.warn('Voice search failed', e);
+        console.warn('Voice reload failed', e);
       }
     }
     function previewVoice(voiceId, text) {
@@ -527,8 +523,7 @@
       if (e.target && e.target.id === 'cf-cancel') closeCharacterDialog();
       if (e.target && e.target.id === 'cf-save') saveCharacterFromDialog();
       if (e.target && e.target.id === 'cf-prompt-wizard') openPromptWizard();
-      if (e.target && e.target.id === 'cf-voices-reload') fetchVoices((characterDialog.querySelector('#cf-voice-search')?.value || '').trim());
-      if (e.target && e.target.id === 'cf-voice-search-btn') fetchVoices((characterDialog.querySelector('#cf-voice-search')?.value || '').trim());
+      if (e.target && e.target.id === 'cf-voices-reload') fetchVoices();
       if (e.target && e.target.id === 'cf-voice-preview') {
         const vid = (characterDialog.querySelector('#cf-voice')?.value || '').trim();
         const txt = (characterDialog.querySelector('#cf-preview-text')?.value || '').trim() || 'Hello!';
@@ -705,15 +700,7 @@
     document.addEventListener('click', (e) => {
       if (e.target && e.target.id === 'cf-avatar-choose') openAvatarPicker();
     });
-    document.addEventListener('keydown', (e) => {
-      if (characterDialog.hasAttribute('open') && e.key === 'Enter') {
-        const active = document.activeElement;
-        if (active && active.id === 'cf-voice-search') {
-          e.preventDefault();
-          fetchVoices(active.value.trim());
-        }
-      }
-    });
+    // Voice search removed: no Enter-to-search behavior
 
     // --- Character Conversations Picker ---
     const charConvoDialog = document.createElement('dialog');
