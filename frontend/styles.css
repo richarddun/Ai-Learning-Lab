@@ -475,6 +475,15 @@ body {
   background: #222;
 }
 
+/* Characters landing grid */
+#characters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem; margin: 0.5rem 0 1rem; }
+#characters-grid .char-card { background:#222; border:1px solid #444; border-radius:10px; padding:0.6rem; display:flex; flex-direction:column; gap:0.4rem; align-items:center; }
+#characters-grid .char-card img { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; background:#333; border:1px solid #555; }
+#characters-grid .char-card .name { font-weight: 600; color:#e0e0e0; text-align:center; }
+#characters-grid .char-card .actions { display:flex; gap:0.4rem; }
+#characters-grid .new-card { justify-content:center; color:#c0c0c0; border-style:dashed; cursor:pointer; }
+#characters-grid .new-card .plus { font-size: 2rem; line-height: 1; }
+
 #conversations .convo-thumb {
   width: 48px;
   height: 48px;

@@ -24,7 +24,7 @@
         </div>
       </div>
     </div>
-    <h2 class="section-title">Your Conversations</h2>
+    <h2 class="section-title">Your Characters</h2>
     <div id="settings-panel" style="display:none; margin-bottom:1rem">
       <h2>API Keys</h2>
       <div id="api-keys-required" style="margin-bottom:0.5rem"></div>
@@ -48,7 +48,9 @@
       <button id="add-key-btn">Add Key</button>
       <button id="close-settings-btn">Close</button>
     </div>
-    <div id="conversations"></div>
+    <div id="characters-grid"></div>
+    <!-- Conversations list kept for legacy paths; hidden for character-first flow -->
+    <div id="conversations" style="display:none"></div>
   </div>
 
   <div id="chat-interface">
@@ -363,6 +365,185 @@
         }
       }
     });
+
+    // --- Character Create/Edit Modal (Phase 1 simplified) ---
+    const characterDialog = document.createElement('dialog');
+    characterDialog.id = 'character-dialog';
+    characterDialog.innerHTML = `
+      <form method="dialog" id="character-form" style="min-width:min(96vw,560px);max-width:96vw;background:#2a2a2a;color:#e0e0e0;border:1px solid #666;border-radius:8px;padding:0.8rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+          <strong id="char-form-title">New Character</strong>
+          <button value="cancel" title="Close" style="border:1px solid #666;background:#3a3a3a;color:#e0e0e0;border-radius:4px;padding:0.2rem 0.5rem;cursor:pointer">✖</button>
+        </div>
+        <label>Name</label>
+        <input id="cf-name" type="text" placeholder="e.g., Luna" style="width:100%;margin-bottom:0.5rem"/>
+        <label>System Prompt</label>
+        <textarea id="cf-prompt" rows="4" placeholder="Describe persona and behavior" style="width:100%;margin-bottom:0.5rem"></textarea>
+        <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.25rem">
+          <label style="flex:1">Avatar URL</label>
+          <button id="cf-avatar-generate" type="button" class="secondary" title="Generate avatar">Generate</button>
+        </div>
+        <input id="cf-avatar" type="text" placeholder="https://..." style="width:100%;margin-bottom:0.6rem"/>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+          <label style="flex:1">Voice</label>
+          <button id="cf-voices-reload" type="button" class="icon-btn" title="Reload voices">⟳</button>
+        </div>
+        <select id="cf-voice" style="width:100%; margin: 0.25rem 0 0.6rem 0"></select>
+        <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.8rem;">
+          <button id="cf-cancel" type="button" class="secondary" style="border:1px solid #666;background:#3a3a3a;color:#e0e0e0;border-radius:4px;padding:0.4rem 0.8rem;cursor:pointer">Cancel</button>
+          <button id="cf-save" type="button" style="border:1px solid #666;background:#4a4a4a;color:#fff;border-radius:4px;padding:0.4rem 0.8rem;cursor:pointer">Save</button>
+        </div>
+      </form>`;
+    document.body.appendChild(characterDialog);
+
+    let editingCharacter = null;
+    function openCharacterDialog(ch) {
+      editingCharacter = ch || null;
+      const title = characterDialog.querySelector('#char-form-title');
+      const name = characterDialog.querySelector('#cf-name');
+      const prompt = characterDialog.querySelector('#cf-prompt');
+      const avatar = characterDialog.querySelector('#cf-avatar');
+      const voice = characterDialog.querySelector('#cf-voice');
+      title.textContent = ch ? 'Edit Character' : 'New Character';
+      name.value = (ch && ch.name) || '';
+      prompt.value = (ch && ch.system_prompt) || '';
+      avatar.value = (ch && ch.avatar) || '';
+      fillVoiceSelect(voice, (ch && ch.voice_id) || (window.ELEVENLABS_VOICE_ID || ''));
+      if (typeof characterDialog.showModal === 'function') characterDialog.showModal();
+      else characterDialog.setAttribute('open','');
+      try { name.focus(); } catch {}
+    }
+    function closeCharacterDialog() { try { characterDialog.close && characterDialog.close(); } catch {}; characterDialog.removeAttribute('open'); }
+    function fillVoiceSelect(sel, selected) {
+      if (!sel) return;
+      const list = Array.isArray(window.__voices) ? window.__voices : [];
+      sel.innerHTML = '<option value="">(no preference)</option>';
+      for (const v of list) {
+        const id = v.voice_id || '';
+        if (!id) continue;
+        const opt = document.createElement('option');
+        opt.value = id; opt.textContent = v.name || id;
+        sel.appendChild(opt);
+      }
+      if (selected) sel.value = selected;
+    }
+    async function saveCharacterFromDialog() {
+      const name = characterDialog.querySelector('#cf-name').value.trim();
+      const prompt = characterDialog.querySelector('#cf-prompt').value;
+      const avatar = characterDialog.querySelector('#cf-avatar').value.trim();
+      const voice = characterDialog.querySelector('#cf-voice').value.trim();
+      if (!name) { alert('Please provide a character name'); return; }
+      try {
+        let created;
+        if (editingCharacter) {
+          const res = await fetch(`${API_BASE}/characters/${editingCharacter.id}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, system_prompt: prompt, avatar, voice_id: voice })
+          });
+          if (!res.ok) throw new Error('Update failed');
+          created = await res.json();
+        } else {
+          const res = await fetch(`${API_BASE}/characters`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, system_prompt: prompt, avatar, voice_id: voice })
+          });
+          if (!res.ok) throw new Error('Create failed');
+          created = await res.json();
+        }
+        closeCharacterDialog();
+        await loadCharacters();
+        // Auto-open a new conversation with this character and auto-intro
+        await startConversationForCharacter(created);
+      } catch (e) {
+        console.error('Character save failed', e);
+        alert('Could not save character');
+      }
+    }
+    characterDialog.addEventListener('cancel', (e) => { e.preventDefault(); closeCharacterDialog(); });
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'cf-cancel') closeCharacterDialog();
+      if (e.target && e.target.id === 'cf-save') saveCharacterFromDialog();
+      if (e.target && e.target.id === 'cf-voices-reload') fillVoiceSelect(characterDialog.querySelector('#cf-voice'), characterDialog.querySelector('#cf-voice').value);
+    });
+
+    // --- Character Conversations Picker ---
+    const charConvoDialog = document.createElement('dialog');
+    charConvoDialog.id = 'char-convo-dialog';
+    charConvoDialog.innerHTML = `
+      <form method="dialog" id="char-convo-form" style="min-width:min(92vw,520px);max-width:96vw;background:#2a2a2a;color:#e0e0e0;border:1px solid #666;border-radius:8px;padding:0.8rem;">
+        <div style=\"display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;\">
+          <strong id=\"ccd-title\">Conversations</strong>
+          <button value=\"cancel\" title=\"Close\" style=\"border:1px solid #666;background:#3a3a3a;color:#e0e0e0;border-radius:4px;padding:0.2rem 0.5rem;cursor:pointer\">✖</button>
+        </div>
+        <div id=\"ccd-list\" style=\"display:flex;flex-direction:column;gap:0.35rem;max-height:52vh;overflow:auto\"></div>
+        <div style=\"display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.8rem;\">
+          <button id=\"ccd-new\" type=\"button\">Start New Conversation</button>
+        </div>
+      </form>`;
+    document.body.appendChild(charConvoDialog);
+    function closeCharConvoDialog(){ try { charConvoDialog.close && charConvoDialog.close(); } catch {}; charConvoDialog.removeAttribute('open'); }
+    function openCharConvoDialog(ch){
+      const title = charConvoDialog.querySelector('#ccd-title');
+      const list = charConvoDialog.querySelector('#ccd-list');
+      title.textContent = `Conversations for ${ch.name}`;
+      list.innerHTML = '';
+      // Filter existing conversations
+      fetch(`${API_BASE}/users`).then(r => r.json()).then(data => {
+        const users = data.users || [];
+        const items = [];
+        for (const u of users) {
+          let prefs = {};
+          try { prefs = u.preferences ? JSON.parse(u.preferences) : {}; } catch {}
+          if (String(prefs.character_id || '') === String(ch.id)) items.push({ id:u.id, name:u.name, prefs });
+        }
+        if (!items.length) {
+          const p = document.createElement('div');
+          p.textContent = 'No conversations yet.';
+          list.appendChild(p);
+        } else {
+          for (const it of items) {
+            const row = document.createElement('div');
+            row.className = 'convo-row';
+            const info = document.createElement('div'); info.className = 'convo-info';
+            const title = document.createElement('div'); title.className = 'convo-title'; title.textContent = it.name;
+            const meta = document.createElement('div'); meta.className = 'convo-meta'; meta.textContent = (it.prefs && it.prefs.voice_name) ? `Voice: ${it.prefs.voice_name}` : '';
+            info.appendChild(title); info.appendChild(meta);
+            const openBtn = document.createElement('button'); openBtn.textContent = 'Open'; openBtn.onclick = () => { closeCharConvoDialog(); selectConversation({ id: it.id, name: it.name }); };
+            row.appendChild(info); row.appendChild(openBtn);
+            list.appendChild(row);
+          }
+        }
+      }).catch(() => { list.textContent = 'Failed to load conversations'; });
+      if (typeof charConvoDialog.showModal === 'function') charConvoDialog.showModal(); else charConvoDialog.setAttribute('open','');
+      // Bind new conv action
+      const btn = charConvoDialog.querySelector('#ccd-new');
+      btn.onclick = async () => {
+        closeCharConvoDialog();
+        await startConversationForCharacter(ch);
+      };
+    }
+
+    async function startConversationForCharacter(ch) {
+      // Create or reopen a conversation with a generated name
+      let name = `${ch.name} Conversation`;
+      try {
+        const s2 = await fetch(`${API_BASE}/conversations/suggest_name`);
+        if (s2.ok) { const j2 = await s2.json(); if (j2.name) name = `${ch.name} - ${j2.name}`; }
+      } catch (e) {}
+      const res = await fetch(`${API_BASE}/users`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+      if (!res.ok) throw new Error('Create conversation failed');
+      const data = await res.json();
+      // Link meta to character and voice
+      const voiceId = (ch.voice_id || window.ELEVENLABS_VOICE_ID || '').trim();
+      const voiceName = (window.__voiceMap && window.__voiceMap[voiceId]) ? window.__voiceMap[voiceId] : '';
+      await fetch(`${API_BASE}/users/${data.id}/meta`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+        system_prompt: ch.system_prompt || '', character_id: ch.id, character_name: ch.name || '', avatar: ch.avatar || '', voice_id: voiceId, voice_name: voiceName
+      })}).catch(()=>{});
+      // Open chat and auto-intro
+      selectConversation({ id: data.id, name: data.name });
+      // Delay a tick to allow chat UI to mount and persona select to apply
+      setTimeout(() => { try { sendMessage('Please introduce yourself briefly to the user.'); } catch (e) {} }, 400);
+    }
 
     // --- Delete Conversation Modal ---
     const deleteConvoDialog = document.createElement('dialog');
@@ -1989,11 +2170,43 @@
     handleResize();
 
     const newConvoBtn = document.getElementById('new-convo-btn');
-    console.log('loaded button');
-    console.log(newConvoBtn);
-    if (newConvoBtn) newConvoBtn.onclick = () => openNewConvoDialog();
+    if (newConvoBtn) newConvoBtn.onclick = () => openCharacterDialog(null);
 
-    loadConversations();
+    // Render character-first landing
+    async function renderCharactersLanding() {
+      const grid = document.getElementById('characters-grid');
+      if (!grid) return;
+      try {
+        if (!Array.isArray(characters) || !characters.length) {
+          await loadCharacters();
+        }
+        grid.innerHTML = '';
+        // New Character tile
+        const newCard = document.createElement('div');
+        newCard.className = 'char-card new-card';
+        newCard.innerHTML = `<div class="plus">＋</div><div>Create Character</div>`;
+        newCard.onclick = () => openCharacterDialog(null);
+        grid.appendChild(newCard);
+        // Character cards
+        for (const ch of characters) {
+          const card = document.createElement('div');
+          card.className = 'char-card';
+          const img = document.createElement('img');
+          if (ch.avatar) img.src = ch.avatar; else img.alt = 'avatar';
+          const name = document.createElement('div'); name.className = 'name'; name.textContent = ch.name || `#${ch.id}`;
+          const actions = document.createElement('div'); actions.className = 'actions';
+          const openBtn = document.createElement('button'); openBtn.textContent = 'Open'; openBtn.onclick = () => openCharConvoDialog(ch);
+          const editBtn = document.createElement('button'); editBtn.textContent = 'Edit'; editBtn.onclick = () => openCharacterDialog(ch);
+          actions.appendChild(openBtn); actions.appendChild(editBtn);
+          card.appendChild(img); card.appendChild(name); card.appendChild(actions);
+          grid.appendChild(card);
+        }
+      } catch (e) {
+        grid.textContent = 'Failed to load characters';
+      }
+    }
+
+    renderCharactersLanding();
     // Attempt to load ElevenLabs voices and characters; silently degrade if not configured
     loadVoices().finally(loadCharacters);
 
@@ -2018,7 +2231,7 @@
       landing.style.display = 'block';
       chatInterface.style.display = 'none';
       updateSidebarOffset();
-      loadConversations();
+      renderCharactersLanding();
     };
   </script>
 </body>
