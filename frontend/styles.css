@@ -146,14 +146,9 @@ body {
   height: calc(100dvh - 70px); /* mobile browser bars aware */
 }
 
-#sidebar {
-  width: 200px;
-  border-right: 1px solid #666;
-  padding: 1rem;
-  background: #2a2a2a;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
+/* Sidebar removed in character-first flow */
+#sidebar { display: none !important; }
+#menu-btn { display: none !important; }
 
 /* Tiny icon button inside inputs/areas */
 .icon-btn {

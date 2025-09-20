@@ -380,13 +380,24 @@
         </div>
         <label>Name</label>
         <input id="cf-name" type="text" placeholder="e.g., Luna" style="width:100%;margin-bottom:0.5rem"/>
-        <label>System Prompt</label>
-        <textarea id="cf-prompt" rows="4" placeholder="Describe persona and behavior" style="width:100%;margin-bottom:0.5rem"></textarea>
-        <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.25rem">
-          <label style="flex:1">Avatar URL</label>
-          <button id="cf-avatar-generate" type="button" class="secondary" title="Generate avatar">Generate</button>
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <label>System Prompt</label>
+          <button id="cf-prompt-wizard" type="button" class="secondary" title="Prompt Wizard">🪄 Generate</button>
         </div>
-        <input id="cf-avatar" type="text" placeholder="https://..." style="width:100%;margin-bottom:0.6rem"/>
+        <textarea id="cf-prompt" rows="4" placeholder="Describe persona and behavior" style="width:100%;margin-bottom:0.5rem"></textarea>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin:0.25rem 0;">
+          <label>Avatar</label>
+          <div style="display:flex; gap:0.4rem;">
+            <button id="cf-avatar-choose" type="button" class="secondary" title="Choose from gallery">Choose Existing</button>
+            <button id="cf-avatar-generate" type="button" class="secondary" title="Generate avatar">Generate</button>
+            <button id="cf-avatar-clear" type="button" class="secondary" title="Clear avatar">Clear</button>
+          </div>
+        </div>
+        <div id="cf-avatar-preview" style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.6rem;">
+          <img id="cf-avatar-img" alt="avatar preview" style="width:72px;height:72px;object-fit:cover;border:1px solid #555;border-radius:8px;background:#333; display:none;" />
+          <span id="cf-avatar-hint" style="opacity:0.8;">No avatar selected</span>
+        </div>
+        <input id="cf-avatar" type="hidden" />
         <div style="display:flex; gap:0.5rem; align-items:center;">
           <label style="flex:1">Voice</label>
           <button id="cf-voices-reload" type="button" class="icon-btn" title="Reload voices">⟳</button>
@@ -419,6 +430,12 @@
       name.value = (ch && ch.name) || '';
       prompt.value = (ch && ch.system_prompt) || '';
       avatar.value = (ch && ch.avatar) || '';
+      try {
+        const img = characterDialog.querySelector('#cf-avatar-img');
+        const hint = characterDialog.querySelector('#cf-avatar-hint');
+        if (avatar.value) { img.src = avatar.value; img.style.display = 'block'; hint.textContent = avatar.value; }
+        else { img.style.display = 'none'; hint.textContent = 'No avatar selected'; }
+      } catch (e) {}
       fillVoiceSelect(voice, (ch && ch.voice_id) || (window.ELEVENLABS_VOICE_ID || ''));
       if (typeof characterDialog.showModal === 'function') characterDialog.showModal();
       else characterDialog.setAttribute('open','');
@@ -509,12 +526,21 @@
     document.addEventListener('click', (e) => {
       if (e.target && e.target.id === 'cf-cancel') closeCharacterDialog();
       if (e.target && e.target.id === 'cf-save') saveCharacterFromDialog();
+      if (e.target && e.target.id === 'cf-prompt-wizard') openPromptWizard();
       if (e.target && e.target.id === 'cf-voices-reload') fetchVoices((characterDialog.querySelector('#cf-voice-search')?.value || '').trim());
       if (e.target && e.target.id === 'cf-voice-search-btn') fetchVoices((characterDialog.querySelector('#cf-voice-search')?.value || '').trim());
       if (e.target && e.target.id === 'cf-voice-preview') {
         const vid = (characterDialog.querySelector('#cf-voice')?.value || '').trim();
         const txt = (characterDialog.querySelector('#cf-preview-text')?.value || '').trim() || 'Hello!';
         previewVoice(vid, txt);
+      }
+      if (e.target && e.target.id === 'cf-avatar-clear') {
+        const avatarEl = characterDialog.querySelector('#cf-avatar');
+        const img = characterDialog.querySelector('#cf-avatar-img');
+        const hint = characterDialog.querySelector('#cf-avatar-hint');
+        if (avatarEl) avatarEl.value = '';
+        if (img) img.style.display = 'none';
+        if (hint) hint.textContent = 'No avatar selected';
       }
       if (e.target && e.target.id === 'cf-avatar-generate') {
         (async () => {
@@ -555,6 +581,12 @@
             const url = data.avatar || '';
             if (url) {
               if (avatarEl) avatarEl.value = url;
+              try {
+                const imgPrev = characterDialog.querySelector('#cf-avatar-img');
+                const hintPrev = characterDialog.querySelector('#cf-avatar-hint');
+                if (imgPrev) { imgPrev.src = url; imgPrev.style.display = 'block'; }
+                if (hintPrev) hintPrev.textContent = url;
+              } catch (e) {}
               try {
                 // Update local character cache and landing grid
                 if (Array.isArray(characters)) {
