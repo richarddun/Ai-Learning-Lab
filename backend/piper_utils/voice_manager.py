@@ -5,9 +5,13 @@ from collections import OrderedDict
 import json
 from typing import Tuple
 
-# Store voices under repo-local directory to avoid requiring /opt permissions
+# Store voices under repo-local directory by default, but allow override via env.
 REPO_ROOT = Path(__file__).resolve().parents[3]
-VOICES_DIR = REPO_ROOT / "voices"
+_VOICES_DIR_ENV = os.getenv("PIPER_VOICES_DIR")
+if _VOICES_DIR_ENV and _VOICES_DIR_ENV.strip():
+    VOICES_DIR = Path(_VOICES_DIR_ENV).expanduser().resolve()
+else:
+    VOICES_DIR = REPO_ROOT / "voices"
 VOICES_DIR.mkdir(parents=True, exist_ok=True)
 
 _MAX_LOADED = int(os.getenv("PIPER_MAX_LOADED", "2"))
