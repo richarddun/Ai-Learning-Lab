@@ -1594,6 +1594,47 @@ def avatar_gallery(request: Request):
         "avatar_gallery.html", {"request": request, "items": items}
     )
 
+@app.get("/avatar-gallery/list")
+def avatar_gallery_list():
+    """Return JSON listing of generated avatars under frontend/assets/characters.
+
+    Each item contains: { char_id, rel, url, name, mtime }
+    """
+    root = Path(__file__).resolve().parent.parent.parent
+    assets_root = root / "frontend" / "assets"
+    chars_dir = assets_root / "characters"
+
+    items: List[dict] = []
+    try:
+        if chars_dir.exists():
+            for char_dir in sorted(chars_dir.iterdir()):
+                if not char_dir.is_dir():
+                    continue
+                char_id = char_dir.name
+                for ext in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+                    for f in char_dir.glob(ext):
+                        try:
+                            stat = f.stat()
+                            mtime = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
+                        except Exception:
+                            mtime = None
+                        rel_under_assets = f.relative_to(assets_root).as_posix()
+                        items.append(
+                            {
+                                "char_id": char_id,
+                                "rel": rel_under_assets,
+                                "url": "/assets/" + rel_under_assets,
+                                "name": f.name,
+                                "mtime": mtime.isoformat() if mtime else "",
+                            }
+                        )
+        # Newest first
+        items.sort(key=lambda d: d.get("mtime", ""), reverse=True)
+    except Exception as e:
+        logger.exception("/avatar-gallery/list failed: %s", e)
+        items = []
+    return {"items": items}
+
 
 @app.get("/avatar-gallery/download")
 def avatar_gallery_download(f: str):

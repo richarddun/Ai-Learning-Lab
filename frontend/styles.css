@@ -476,13 +476,22 @@ body {
 }
 
 /* Characters landing grid */
-#characters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem; margin: 0.5rem 0 1rem; }
-#characters-grid .char-card { background:#222; border:1px solid #444; border-radius:10px; padding:0.6rem; display:flex; flex-direction:column; gap:0.4rem; align-items:center; }
-#characters-grid .char-card img { width: 120px; height: 120px; object-fit: cover; border-radius: 8px; background:#333; border:1px solid #555; }
+#characters-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; margin: 0.5rem 0 1rem; }
+#characters-grid .char-card { background:#222; border:1px solid #444; border-radius:10px; padding:0.6rem; display:flex; flex-direction:column; gap:0.4rem; align-items:center; transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease; }
+#characters-grid .char-card img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; background:#333; border:1px solid #555; transition: filter 0.12s ease; }
+#characters-grid .char-card:hover { border-color:#888; box-shadow: 0 2px 8px rgba(0,0,0,0.25); transform: translateY(-1px); }
+#characters-grid .char-card:hover img { filter: brightness(1.08); }
 #characters-grid .char-card .name { font-weight: 600; color:#e0e0e0; text-align:center; }
 #characters-grid .char-card .actions { display:flex; gap:0.4rem; }
-#characters-grid .new-card { justify-content:center; color:#c0c0c0; border-style:dashed; cursor:pointer; }
-#characters-grid .new-card .plus { font-size: 2rem; line-height: 1; }
+#characters-grid .new-card { justify-content:center; color:#c0c0c0; border-style:dashed; cursor:pointer; user-select:none; }
+#characters-grid .new-card .plus { font-size: 1.8rem; line-height: 1; }
+#characters-grid .new-card:hover { border-color:#aaa; box-shadow: 0 2px 8px rgba(0,0,0,0.25); background:#262626; }
+
+/* Avatar picker modal */
+.avatar-picker-grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(120px,1fr)); gap:0.5rem; }
+.avatar-picker-grid figure { margin:0; background:#222; border:1px solid #444; border-radius:8px; padding:0.35rem; display:flex; flex-direction:column; gap:0.25rem; align-items:center; cursor:pointer; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.avatar-picker-grid figure:hover { border-color:#888; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+.avatar-picker-grid img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:6px; background:#333; }
 
 #conversations .convo-thumb {
   width: 48px;

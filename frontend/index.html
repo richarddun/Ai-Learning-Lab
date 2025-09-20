@@ -277,7 +277,9 @@
         const text = (data && data.prompt) || '';
         if (text) {
           const ta = document.getElementById('char-prompt');
-          ta.value = text;
+          if (ta) ta.value = text;
+          const ta2 = document.getElementById('cf-prompt');
+          if (ta2) ta2.value = text;
           closePromptWizard();
         } else {
           throw new Error('Empty suggestion');
@@ -286,6 +288,7 @@
         // Fallback: local template
         const base = `You are a helpful ${gender} ${archetypes.join(', ')} guide with ${traits.join(', ')} traits, grounded in ${genres.join(', ')} themes. ${style || 'Use friendly, age-appropriate language.'}`.replace(/\s+/g,' ').trim();
         try { document.getElementById('char-prompt').value = base; } catch {}
+        try { document.getElementById('cf-prompt').value = base; } catch {}
         err.textContent = 'Used local template (suggestion service unavailable).';
       } finally {
         btn.disabled = false;
@@ -570,6 +573,55 @@
         })();
       }
     });
+
+    // --- Avatar Picker Modal ---
+    const avatarPicker = document.createElement('dialog');
+    avatarPicker.id = 'avatar-picker-dialog';
+    avatarPicker.innerHTML = `
+      <form method="dialog" style="min-width:min(96vw,820px);max-width:96vw;background:#2a2a2a;color:#e0e0e0;border:1px solid #666;border-radius:8px;padding:0.8rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+          <strong>Select an Avatar</strong>
+          <button value="cancel" title="Close" style="border:1px solid #666;background:#3a3a3a;color:#e0e0e0;border-radius:4px;padding:0.2rem 0.5rem;cursor:pointer">✖</button>
+        </div>
+        <div id="ap-grid" class="avatar-picker-grid"></div>
+      </form>`;
+    document.body.appendChild(avatarPicker);
+    function closeAvatarPicker(){ try { avatarPicker.close && avatarPicker.close(); } catch {}; avatarPicker.removeAttribute('open'); }
+    async function openAvatarPicker(){
+      const grid = avatarPicker.querySelector('#ap-grid');
+      grid.innerHTML = 'Loading…';
+      try {
+        const res = await fetch(`${API_BASE}/avatar-gallery/list`);
+        const data = res.ok ? await res.json() : { items: [] };
+        const items = Array.isArray(data.items) ? data.items : [];
+        grid.innerHTML = '';
+        if (!items.length) { grid.textContent = 'No avatars found.'; }
+        for (const it of items) {
+          const fig = document.createElement('figure');
+          const img = document.createElement('img'); img.src = it.url; img.alt = it.name || 'avatar';
+          const cap = document.createElement('figcaption'); cap.textContent = it.name || '';
+          fig.appendChild(img); fig.appendChild(cap);
+          fig.onclick = () => {
+            try {
+              const avatarEl = characterDialog.querySelector('#cf-avatar');
+              const imgEl = characterDialog.querySelector('#cf-avatar-img');
+              const hint = characterDialog.querySelector('#cf-avatar-hint');
+              if (avatarEl) avatarEl.value = it.url;
+              if (imgEl) { imgEl.src = it.url; imgEl.style.display = 'block'; }
+              if (hint) hint.textContent = it.url;
+            } catch (e) {}
+            closeAvatarPicker();
+          };
+          grid.appendChild(fig);
+        }
+      } catch (e) {
+        grid.textContent = 'Failed to load avatars';
+      }
+      if (typeof avatarPicker.showModal === 'function') avatarPicker.showModal(); else avatarPicker.setAttribute('open','');
+    }
+    document.addEventListener('click', (e) => {
+      if (e.target && e.target.id === 'cf-avatar-choose') openAvatarPicker();
+    });
     document.addEventListener('keydown', (e) => {
       if (characterDialog.hasAttribute('open') && e.key === 'Enter') {
         const active = document.activeElement;
@@ -653,10 +705,10 @@
       await fetch(`${API_BASE}/users/${data.id}/meta`, { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
         system_prompt: ch.system_prompt || '', character_id: ch.id, character_name: ch.name || '', avatar: ch.avatar || '', voice_id: voiceId, voice_name: voiceName
       })}).catch(()=>{});
-      // Open chat and auto-intro
+      // Open chat and auto-intro (do not echo the user prompt to UI)
       selectConversation({ id: data.id, name: data.name });
-      // Delay a tick to allow chat UI to mount and persona select to apply
-      setTimeout(() => { try { sendMessage('Please introduce yourself briefly to the user.'); } catch (e) {} }, 400);
+      // Delay to allow chat UI to mount and persona select to apply
+      setTimeout(() => { try { sendMessageNoEcho('Please introduce yourself briefly to the user.'); } catch (e) {} }, 400);
     }
 
     // --- Delete Conversation Modal ---
@@ -1698,6 +1750,28 @@
       if (isSpeechEnabled()) {
         speak(botText);
       }
+    }
+
+    // Send a message but do not echo the user text into the chat UI
+    async function sendMessageNoEcho(text) {
+      const message = text;
+      if (!message) return;
+      const effectiveSystemPrompt = buildEffectiveSystemPrompt();
+      const response = await fetch(`${API_BASE}/chat/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userIdField.value, message, system_prompt: effectiveSystemPrompt })
+      });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const botP = appendMessage('bot', '');
+      let botText = '';
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        botText += chunk; botP.textContent += chunk; chatDiv.scrollTop = chatDiv.scrollHeight;
+      }
+      renderMarkdownInto(botP, botText);
+      if (isSpeechEnabled()) speak(botText);
     }
 
     // Enter submits; Shift+Enter creates newline
