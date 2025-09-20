@@ -488,6 +488,15 @@ body {
 .avatar-picker-grid figure:hover { border-color:#888; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
 .avatar-picker-grid img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:6px; background:#333; }
 
+/* Generic dialog cleanup + open animation */
+dialog { border: none; padding: 0; background: transparent; }
+dialog::backdrop { background: rgba(0,0,0,0.55); backdrop-filter: blur(1px); }
+dialog[open] > form { animation: modal-pop 160ms ease-out; transform-origin: center; }
+@keyframes modal-pop {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
 #conversations .convo-thumb {
   width: 48px;
   height: 48px;
