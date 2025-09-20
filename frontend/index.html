@@ -526,6 +526,7 @@
     const userIdField = document.getElementById('user-id');
     const backBtn = document.getElementById('back-btn');
     const menuBtn = document.getElementById('menu-btn');
+    const topbar = document.getElementById('topbar');
     const sidebar = document.getElementById('sidebar');
     const settingsPanel = document.getElementById('settings-panel');
     const settingsBtns = document.querySelectorAll('.settings-btn');
@@ -822,6 +823,7 @@
         landing.style.display = 'none';
         chatInterface.style.display = 'block';
         profileName.textContent = convo.name;
+        updateSidebarOffset();
         // Apply conversation avatar if present in preferences JSON
         try {
           const prefs = data.preferences ? JSON.parse(data.preferences) : {};
@@ -1864,8 +1866,32 @@
       loadApiKeys();
     };
 
+    if (menuBtn) {
+      menuBtn.setAttribute('aria-expanded', 'false');
+      menuBtn.setAttribute('aria-controls', 'sidebar');
+    }
+
+    function updateSidebarOffset() {
+      if (!sidebar) return;
+      if (window.innerWidth <= 780) {
+        const offset = topbar ? Math.ceil(topbar.getBoundingClientRect().bottom) : 0;
+        sidebar.style.setProperty('--sidebar-offset', `${Math.max(offset, 0)}px`);
+      } else {
+        sidebar.style.removeProperty('--sidebar-offset');
+      }
+    }
+
+    function setSidebarOpen(isOpen) {
+      if (!sidebar) return;
+      sidebar.classList.toggle('open', Boolean(isOpen));
+      if (menuBtn) menuBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      if (isOpen) updateSidebarOffset();
+    }
+
     if (menuBtn) menuBtn.onclick = () => {
-      if (sidebar) sidebar.classList.toggle('open');
+      if (!sidebar) return;
+      const shouldOpen = !sidebar.classList.contains('open');
+      setSidebarOpen(shouldOpen);
     };
 
     function relocateExportControls() {
@@ -1874,11 +1900,18 @@
         if (!sidebar.contains(exportControls)) sidebar.appendChild(exportControls);
       } else {
         if (!inputArea.contains(exportControls)) inputArea.appendChild(exportControls);
-        sidebar.classList.remove('open');
+        setSidebarOpen(false);
       }
     }
-    window.addEventListener('resize', relocateExportControls);
-    relocateExportControls();
+
+    function handleResize() {
+      relocateExportControls();
+      updateSidebarOffset();
+      if (menuBtn && window.innerWidth > 780) menuBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    window.addEventListener('resize', handleResize);
+    handleResize();
 
     const newConvoBtn = document.getElementById('new-convo-btn');
     console.log('loaded button');
@@ -1896,6 +1929,7 @@
     
     // Back to conversations
     if (backBtn) backBtn.onclick = () => {
+      setSidebarOpen(false);
       stopAllSpeech();
       // Stop recording if active
       try {
@@ -1908,6 +1942,7 @@
       profileName.textContent = '';
       landing.style.display = 'block';
       chatInterface.style.display = 'none';
+      updateSidebarOffset();
       loadConversations();
     };
   </script>

@@ -1,3 +1,7 @@
+:root {
+  --sidebar-offset: 0px;
+}
+
 body {
   margin: 0;
   font-family: Arial, sans-serif;
@@ -94,6 +98,9 @@ body {
   padding: 0.5rem 1rem;
   border-bottom: 1px solid #666;
   color: #1b1b1b;
+  position: sticky;
+  top: 0;
+  z-index: 1010;
 }
 
 #back-btn {
@@ -574,10 +581,10 @@ body {
   #sidebar {
     display: none;
     position: fixed;
-    top: 0;
     left: 0;
     width: 80%;
-    height: 100%;
+    top: var(--sidebar-offset, 0px);
+    height: calc(100% - var(--sidebar-offset, 0px));
     max-height: none;
     margin: 0;
     border-right: 1px solid #666;
