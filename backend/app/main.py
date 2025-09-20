@@ -364,7 +364,14 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
 
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
-    """Stream a chat response from the OpenRouter API."""
+    """Stream a chat response from the OpenRouter API.
+
+    Augmentation: ask the model to include a concise spoken summary enclosed
+    in <SPOKEN_SUMMARY>…</SPOKEN_SUMMARY> at the start of its output. We
+    intercept this summary server‑side and send it to the client as a JSONL
+    prelude line: {"type":"summary","text":"..."}\n, then stream only the
+    full display content as plain text.
+    """
     user = db.query(models.User).filter(models.User.id == req.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -392,14 +399,78 @@ async def chat_stream(req: ChatRequest, db: Session = Depends(get_db)):
         messages_q.reverse()
         role_map = {"user": "user", "bot": "assistant"}
         messages = []
-        if req.system_prompt:
-            messages.append({"role": "system", "content": req.system_prompt})
+        # System prompt: add instruction to emit a concise spoken summary first
+        spoken_instr = (
+            "When you respond, first output a concise, one-sentence spoken summary "
+            "enclosed in <SPOKEN_SUMMARY> and </SPOKEN_SUMMARY>. "
+            "Keep it under 25 words, kid-friendly, and avoid code or lists. "
+            "After the closing tag, output your full response for display."
+        )
+        sys_content = (req.system_prompt or "").strip()
+        if sys_content:
+            sys_content = sys_content + "\n\n" + spoken_instr
+        else:
+            sys_content = spoken_instr
+        messages.append({"role": "system", "content": sys_content})
         for m in messages_q:
             messages.append({"role": role_map.get(m.role, m.role), "content": m.content})
 
+        # Stream and intercept <SPOKEN_SUMMARY>…</SPOKEN_SUMMARY>
+        have_sent_summary = False
+        buf = ""
+        capturing = False
+        summary = []
+
         async for token in stream_chat_with_openrouter(messages=messages):
-            response_text += token
-            yield token
+            if have_sent_summary:
+                response_text += token
+                yield token
+                continue
+
+            # Accumulate buffer until we can parse tags
+            buf += token
+
+            # Detect opening tag
+            start_idx = buf.find("<SPOKEN_SUMMARY>")
+            if not capturing and start_idx != -1:
+                # Drop any leading content before the tag (should be empty)
+                buf = buf[start_idx + len("<SPOKEN_SUMMARY>") :]
+                capturing = True
+
+            if capturing:
+                end_idx = buf.find("</SPOKEN_SUMMARY>")
+                if end_idx != -1:
+                    # Capture summary text up to end tag
+                    summary_text = ("".join(summary) + buf[:end_idx]).strip()
+                    # Emit JSONL prelude with summary (single line)
+                    try:
+                        prelude = {"type": "summary", "text": summary_text}
+                        import json as _json
+                        line = _json.dumps(prelude, ensure_ascii=False) + "\n"
+                    except Exception:
+                        line = '{"type":"summary","text":""}' + "\n"
+                    yield line
+                    have_sent_summary = True
+                    capturing = False
+                    summary = []
+                    # Remainder after closing tag is the start of real content
+                    remainder = buf[end_idx + len("</SPOKEN_SUMMARY>") :]
+                    if remainder:
+                        response_text += remainder
+                        yield remainder
+                    buf = ""
+                else:
+                    # Keep capturing until we see the end tag
+                    summary.append(buf)
+                    buf = ""
+            else:
+                # No tag: If model ignored instruction, stop waiting and stream as-is
+                if len(buf) > 2000:  # safety threshold
+                    have_sent_summary = True
+                    response_text += buf
+                    yield buf
+                    buf = ""
+
         # Use the stored user_id to avoid accessing attributes on a detached instance
         bot_msg = models.Message(user_id=user_id, role="bot", content=response_text)
         db.add(bot_msg)

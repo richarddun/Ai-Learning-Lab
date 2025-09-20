@@ -568,6 +568,46 @@
       return el;
     }
 
+    // Lightweight TTS summarizer to keep audio concise
+    function summarizeForTTS(input) {
+      if (!input) return '';
+      let t = String(input);
+      // Strip code blocks and inline code
+      t = t.replace(/```[\s\S]*?```/g, '');
+      t = t.replace(/`([^`]+)`/g, '$1');
+      // Replace markdown links with their text
+      t = t.replace(/!\[[^\]]*\]\([^)]*\)/g, ''); // images -> drop
+      t = t.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1');
+      // Remove emphasis and headings markers
+      t = t.replace(/[>#*_~]+/g, ' ');
+      // Collapse whitespace and newlines
+      t = t.replace(/[\r\n]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+      // Split into sentences
+      const parts = t.split(/(?<=[.!?])\s+/).filter(Boolean);
+      if (!parts.length) return t.slice(0, 180);
+
+      // Build summary: prefer first sentence; if too short, include second.
+      let summary = parts[0] || '';
+      if (summary.length < 60 && parts[1]) summary = summary + ' ' + parts[1];
+
+      // If there's a direct question early on, append it to keep conversational flow
+      const q = parts.find(s => /\?\s*$/.test(s));
+      if (q && q !== summary && summary.length < 140) {
+        summary = summary.replace(/[\s.]+$/, '');
+        summary += (summary.endsWith('?') ? '' : '. ') + q.trim();
+      }
+
+      // Trim to a reasonable TTS length
+      if (summary.length > 200) {
+        summary = summary.slice(0, 200);
+        // avoid cutting a word
+        summary = summary.replace(/\s+\S*$/, '');
+        if (!/[.!?]$/.test(summary)) summary += '…';
+      }
+      return summary;
+    }
+
     const synth = window.speechSynthesis;
     let audioCtx; // for UI beeps
     // Track current ElevenLabs audio playback so we can cancel it
@@ -1383,19 +1423,56 @@
       const decoder = new TextDecoder();
       const botP = appendMessage('bot', '');
       let botText = '';
+      let gotSummary = false;
+      let expectingPrelude = true;
+      let preludeBuf = '';
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
-        botText += chunk;
-        botP.textContent += chunk;
-        chatDiv.scrollTop = chatDiv.scrollHeight;
+        let remainder = chunk;
+        if (expectingPrelude) {
+          preludeBuf += chunk;
+          // Decide if this is a JSONL prelude (summary) from server
+          if (/^\s*\{/.test(preludeBuf) && preludeBuf.includes('\n')) {
+            const idx = preludeBuf.indexOf('\n');
+            const line = preludeBuf.slice(0, idx);
+            remainder = preludeBuf.slice(idx + 1);
+            expectingPrelude = false;
+            try {
+              const evt = JSON.parse(line);
+              if (evt && evt.type === 'summary' && typeof evt.text === 'string' && isSpeechEnabled()) {
+                const brief = evt.text.trim();
+                if (brief) { speak(brief); gotSummary = true; }
+              }
+            } catch (e) {
+              // Not JSON; treat buffered text as normal content
+              remainder = preludeBuf;
+            }
+            preludeBuf = '';
+          } else if (!/^\s*\{/.test(preludeBuf) && preludeBuf.length > 64) {
+            // Doesn't look like JSON; fallback to normal streaming
+            expectingPrelude = false;
+            remainder = preludeBuf;
+            preludeBuf = '';
+          } else {
+            // wait for more
+            remainder = '';
+          }
+        }
+
+        if (remainder) {
+          botText += remainder;
+          botP.textContent += remainder;
+          chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
       }
       // Render final bot message as Markdown
       renderMarkdownInto(botP, botText);
-      // Speak only if enabled
-      if (isSpeechEnabled()) {
-        speak(botText);
+      // If server didn't provide a summary, speak a concise fallback summary now
+      if (isSpeechEnabled() && !gotSummary) {
+        const brief = summarizeForTTS(botText);
+        if (brief) speak(brief);
       }
     }
 
