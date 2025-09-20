@@ -1047,7 +1047,7 @@ async def tts_stream(
 
 
 @app.get("/tts/voices")
-async def list_voices(db: Session = Depends(get_db)):
+async def list_voices(q: Optional[str] = None, db: Session = Depends(get_db)):
     """Return available ElevenLabs voices (id + name).
 
     If API key not set, return 503 so frontend can hide selector.
@@ -1061,7 +1061,7 @@ async def list_voices(db: Session = Depends(get_db)):
     try:
         from tts.elevenlabs_client import ElevenLabsTTSClient
         client = ElevenLabsTTSClient(api_key=api_key)
-        raw_voices = client.list_voices()
+        raw_voices = client.list_voices(q)
 
         def get(v, key, alt=None):
             # Handles object or dict

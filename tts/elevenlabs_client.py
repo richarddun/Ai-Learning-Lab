@@ -1,3 +1,4 @@
+from typing import Optional
 from elevenlabs.client import ElevenLabs
 from .base import BaseTTSClient
 
@@ -37,12 +38,25 @@ class ElevenLabsTTSClient(BaseTTSClient):
             if isinstance(chunk, bytes):
                 yield chunk
 
-    def list_voices(self):
+    def list_voices(self, query: 'Optional[str]' = None):
         """
         Returns a list of available voices (as dicts).
+
+        If `query` is provided, performs a search/filter server-side when supported
+        by the ElevenLabs SDK; otherwise falls back to the full list.
         """
-        response = self.client.voices.search()
-        return response.voices
+        try:
+            if query:
+                response = self.client.voices.search(query=query)
+            else:
+                response = self.client.voices.search()
+        except TypeError:
+            # Older SDKs may not support keyword; try positional
+            if query:
+                response = self.client.voices.search(query)
+            else:
+                response = self.client.voices.search()
+        return getattr(response, 'voices', [])
 
     def get_character_voices(self):
         """

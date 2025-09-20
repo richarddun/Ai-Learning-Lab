@@ -388,7 +388,15 @@
           <label style="flex:1">Voice</label>
           <button id="cf-voices-reload" type="button" class="icon-btn" title="Reload voices">⟳</button>
         </div>
+        <div style="display:flex; gap:0.4rem; align-items:center; margin: 0.25rem 0;">
+          <input id="cf-voice-search" type="text" placeholder="Search voices (name, category)" style="flex:1;" />
+          <button id="cf-voice-search-btn" type="button" title="Search">Search</button>
+        </div>
         <select id="cf-voice" style="width:100%; margin: 0.25rem 0 0.6rem 0"></select>
+        <div style="display:flex; gap:0.4rem; align-items:center;">
+          <input id="cf-preview-text" type="text" value="Hi, I'm your learning buddy. How can I help?" style="flex:1" />
+          <button id="cf-voice-preview" type="button" title="Preview in selected voice">Preview</button>
+        </div>
         <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:0.8rem;">
           <button id="cf-cancel" type="button" class="secondary" style="border:1px solid #666;background:#3a3a3a;color:#e0e0e0;border-radius:4px;padding:0.4rem 0.8rem;cursor:pointer">Cancel</button>
           <button id="cf-save" type="button" style="border:1px solid #666;background:#4a4a4a;color:#fff;border-radius:4px;padding:0.4rem 0.8rem;cursor:pointer">Save</button>
@@ -427,6 +435,41 @@
       }
       if (selected) sel.value = selected;
     }
+    async function fetchVoices(term) {
+      try {
+        const url = term ? `${API_BASE}/tts/voices?q=${encodeURIComponent(term)}` : `${API_BASE}/tts/voices`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`voices http ${res.status}`);
+        const data = await res.json();
+        const list = Array.isArray(data.voices) ? data.voices : [];
+        window.__voices = list;
+        window.__voiceMap = {};
+        for (const v of list) { if (v.voice_id) window.__voiceMap[v.voice_id] = v.name || v.voice_id; }
+        fillVoiceSelect(characterDialog.querySelector('#cf-voice'), characterDialog.querySelector('#cf-voice').value);
+      } catch (e) {
+        console.warn('Voice search failed', e);
+      }
+    }
+    function previewVoice(voiceId, text) {
+      if (!voiceId) { alert('Select a voice first'); return; }
+      // Stop any ongoing audio
+      try { stopAllSpeech(); } catch (e) {}
+      const url = `${API_BASE}/tts/stream?voice_id=${encodeURIComponent(voiceId)}&text=${encodeURIComponent(text || 'Hello!')}`;
+      try {
+        const audio = new Audio(url);
+        currentTtsAudio = audio;
+        currentTtsUrl = null;
+        audio.play().catch((err) => {
+          console.warn('Preview play failed', err);
+          // Optional: fall back to browser TTS for the text only
+          try {
+            const u = new SpeechSynthesisUtterance(text || 'Hello!');
+            synth.speak(u);
+          } catch (_) {}
+        });
+        audio.onended = () => { currentTtsAudio = null; };
+      } catch (e) { console.warn('Preview failed', e); }
+    }
     async function saveCharacterFromDialog() {
       const name = characterDialog.querySelector('#cf-name').value.trim();
       const prompt = characterDialog.querySelector('#cf-prompt').value;
@@ -463,7 +506,22 @@
     document.addEventListener('click', (e) => {
       if (e.target && e.target.id === 'cf-cancel') closeCharacterDialog();
       if (e.target && e.target.id === 'cf-save') saveCharacterFromDialog();
-      if (e.target && e.target.id === 'cf-voices-reload') fillVoiceSelect(characterDialog.querySelector('#cf-voice'), characterDialog.querySelector('#cf-voice').value);
+      if (e.target && e.target.id === 'cf-voices-reload') fetchVoices((characterDialog.querySelector('#cf-voice-search')?.value || '').trim());
+      if (e.target && e.target.id === 'cf-voice-search-btn') fetchVoices((characterDialog.querySelector('#cf-voice-search')?.value || '').trim());
+      if (e.target && e.target.id === 'cf-voice-preview') {
+        const vid = (characterDialog.querySelector('#cf-voice')?.value || '').trim();
+        const txt = (characterDialog.querySelector('#cf-preview-text')?.value || '').trim() || 'Hello!';
+        previewVoice(vid, txt);
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (characterDialog.hasAttribute('open') && e.key === 'Enter') {
+        const active = document.activeElement;
+        if (active && active.id === 'cf-voice-search') {
+          e.preventDefault();
+          fetchVoices(active.value.trim());
+        }
+      }
     });
 
     // --- Character Conversations Picker ---
