@@ -239,6 +239,14 @@ body {
   min-height: 0;
 }
 
+/* Chat message blocks (supports Markdown content) */
+#chat .message { margin: 0 0 0.9rem 0; }
+#chat .message .message-body { line-height: 1.45; }
+#chat .message pre { background: #1d1d1d; border: 1px solid #444; border-radius: 6px; padding: 0.6rem; overflow: auto; }
+#chat .message code { background: #1d1d1d; border: 1px solid #444; border-radius: 4px; padding: 0.1rem 0.3rem; }
+#chat .message ul, #chat .message ol { padding-left: 1.25rem; }
+#chat .message a { color: #9ecbff; text-decoration: underline; }
+
 #input-area {
   border-top: 1px solid #666;
   padding: 0.75rem;

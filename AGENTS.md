@@ -34,3 +34,7 @@
 - Any new route or other fundamental change **must include a corresponding test case** to prevent regressions.
 - Keep commits small and descriptive. Follow existing code style; run formatters/linting when available.
 
+## Other notes : 
+
+- The chat UI lives in frontend/index.html and its responsive layout is governed by frontend/styles.css, so mobile-facing tweaks can be found quickly.
+- The mobile sidebar now relies on the --sidebar-offset CSS variable and the setSidebarOpen helper when adjusting responsive behavior.

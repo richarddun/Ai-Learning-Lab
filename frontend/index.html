@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Markdown + Sanitizer libs -->
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.1/dist/markdown-it.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
   <title>AI Learning Lab</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -543,6 +546,27 @@
     const apiKeysList = document.getElementById('api-keys-list');
     const addKeyBtn = document.getElementById('add-key-btn');
     const closeSettingsBtn = document.getElementById('close-settings-btn');
+
+    // Markdown rendering helpers
+    const md = (window.markdownit ? window.markdownit({ linkify: true, breaks: true }) : null);
+    function renderMarkdownInto(el, text) {
+      if (!el) return null;
+      const t = text || '';
+      if (md && window.DOMPurify) {
+        const raw = md.render(t);
+        el.innerHTML = window.DOMPurify.sanitize(raw);
+        // Tweak links for safety/usability
+        try {
+          el.querySelectorAll('a[href]').forEach(a => {
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+          });
+        } catch (e) {}
+      } else {
+        el.textContent = t;
+      }
+      return el;
+    }
 
     const synth = window.speechSynthesis;
     let audioCtx; // for UI beeps
@@ -1367,6 +1391,8 @@
         botP.textContent += chunk;
         chatDiv.scrollTop = chatDiv.scrollHeight;
       }
+      // Render final bot message as Markdown
+      renderMarkdownInto(botP, botText);
       // Speak only if enabled
       if (isSpeechEnabled()) {
         speak(botText);
@@ -1393,12 +1419,15 @@
     }
 
     function appendMessage(sender, text) {
-      const p = document.createElement('p');
-      p.className = sender;
-      p.textContent = text;
-      chatDiv.appendChild(p);
+      const wrap = document.createElement('div');
+      wrap.className = `message ${sender}`; // retain role color via class
+      const body = document.createElement('div');
+      body.className = 'message-body';
+      renderMarkdownInto(body, text);
+      wrap.appendChild(body);
+      chatDiv.appendChild(wrap);
       chatDiv.scrollTop = chatDiv.scrollHeight;
-      return p;
+      return body; // return body so streaming can update textContent, then finalize to Markdown
     }
 
     function sanitizeForTTS(s) {
