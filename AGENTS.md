@@ -38,3 +38,6 @@
 
 - The chat UI lives in frontend/index.html and its responsive layout is governed by frontend/styles.css, so mobile-facing tweaks can be found quickly.
 - The mobile sidebar now relies on the --sidebar-offset CSS variable and the setSidebarOpen helper when adjusting responsive behavior.
+
+## Containerization Resources
+- See `docs/CONTAINERIZATION_GUIDE.md` for containerization, AWS EKS, DB, and Auth guidance. Update this doc when deployment assumptions change.
